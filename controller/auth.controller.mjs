@@ -5,10 +5,11 @@ import transporter from "../config/email.config.mjs";
 const saltRounds = 10;
 
 export const registerUser = (req, res) => {
-  const { name, email, phone_no, password } = req.body;
+  const { fullname, email, phone_no, qualification, jobStatus, password } =
+    req.body;
 
-  if (!name || !email || !phone_no || !password) {
-    return res.status(400).json({ message: "All fields are required." });
+  if (!fullname || !email || !phone_no || !password) {
+    return res.json({ message: "All fields are required." });
   }
 
   // Check if email exists in User or Auth tables
@@ -19,13 +20,11 @@ export const registerUser = (req, res) => {
       if (err) {
         console.error(err);
         return res
-          .status(500)
           .json({ message: "Error checking email in User table." });
       }
 
       if (userRows.length > 0) {
         return res
-          .status(400)
           .json({ message: "Email already exists in User table." });
       }
 
@@ -36,13 +35,11 @@ export const registerUser = (req, res) => {
           if (err) {
             console.error(err);
             return res
-              .status(500)
               .json({ message: "Error checking email in Auth table." });
           }
 
           if (authRows.length > 0) {
             return res
-              .status(400)
               .json({ message: "Email already exists in Auth table." });
           }
 
@@ -57,13 +54,19 @@ export const registerUser = (req, res) => {
 
             // Insert into User table
             db.query(
-              "INSERT INTO user (first_name, email, phone_no, password) VALUES (?, ?, ?, ?)",
-              [name, email, phone_no, hashedPassword],
+              "INSERT INTO user (first_name, email, phone_no, password, qualification, profession) VALUES (?, ?, ?, ?,?,?)",
+              [
+                fullname,
+                email,
+                phone_no,
+                hashedPassword,
+                qualification,
+                jobStatus,
+              ],
               (err, userResult) => {
                 if (err) {
                   console.error(err);
                   return res
-                    .status(500)
                     .json({ message: "Error inserting into User table." });
                 }
 
@@ -86,7 +89,6 @@ export const registerUser = (req, res) => {
                       );
 
                       return res
-                        .status(500)
                         .json({ message: "Error inserting into Auth table." });
                     }
 
@@ -110,7 +112,7 @@ export const registerUser = (req, res) => {
                             () => {}
                           );
 
-                          return res.status(500).json({
+                          return res.json({
                             message: "Error inserting into Context table.",
                           });
                         }
@@ -137,7 +139,7 @@ export const registerUser = (req, res) => {
                                 () => {}
                               );
 
-                              return res.status(500).json({
+                              return res.json({
                                 message:
                                   "Error updating User table with context_id.",
                               });
@@ -148,7 +150,7 @@ export const registerUser = (req, res) => {
                               from: "sivaranji5670@gmail.com",
                               to: email,
                               subject: "Welcome to LMS",
-                              text: `Hello ${name},\n\nThank you for registering with our LMS platform!\n\nBest Regards,\nLMS Team`,
+                              text: `Hello ${fullname},\n\nThank you for registering with our LMS platform!\n\nBest Regards,\nLMS Team`,
                             };
 
                             transporter.sendMail(mailOptions, (error) => {
@@ -167,12 +169,12 @@ export const registerUser = (req, res) => {
                                   () => {}
                                 );
 
-                                return res.status(500).json({
+                                return res.json({
                                   message:
                                     "Registration failed. Please try again.",
                                 });
                               } else {
-                                res.status(201).json({
+                                res.json({
                                   message: "User registered successfully.",
                                 });
                               }

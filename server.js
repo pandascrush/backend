@@ -7,8 +7,9 @@ import authRoute from "./routes/auth.routes.mjs";
 import categoryRoute from "./routes/Course/category.routes.mjs";
 import courseRoute from "./routes/Course/course.routes.mjs";
 import quizRouter from "./routes/Course/quiz.routes.mjs";
-import userRouter from './routes/User/user.routes.mjs'
+import userRouter from "./routes/User/user.routes.mjs";
 import cookieParser from "cookie-parser";
+import paymentRouter from "./routes/Payment/payment.routes.mjs";
 
 dotenv.config();
 const app = express();
@@ -20,7 +21,7 @@ app.use(express.json());
 // app.use(bodyParser.json());
 app.use(
   cors({
-    origin:`${process.env.DOMAIN}`, // Replace with your client URL
+    origin: `${process.env.DOMAIN}`, // Replace with your client URL
     credentials: true, // Allow credentials (cookies)
   })
 );
@@ -29,7 +30,8 @@ app.use("/auth", authRoute);
 app.use("/category", categoryRoute);
 app.use("/course", courseRoute);
 app.use("/quiz", quizRouter);
-app.use('/user',userRouter)
+app.use("/user", userRouter);
+app.use("/payment", paymentRouter);
 app.use("/uploads", express.static("uploads"));
 
 //richtext

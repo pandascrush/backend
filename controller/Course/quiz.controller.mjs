@@ -177,7 +177,7 @@ export const createQuiz = (req, res) => {
 
   // Ensure the required data is received
   if (!courseId || !categoryId || !sequence || !quizTypeId) {
-    return res.status(400).json({ message: "Invalid data received." });
+    return res.json({ message: "Invalid data received." });
   }
 
   // Start with inserting into the quiz table
@@ -211,7 +211,7 @@ export const createQuiz = (req, res) => {
   db.query(quizQuery, quizParams, (err, quizResult) => {
     if (err) {
       console.error("Error executing quiz query:", err);
-      return res.status(500).json({ message: "Error saving quiz." });
+      return res.json({ message: "Error saving quiz." });
     }
 
     const quizId = quizResult.insertId; // Get the newly inserted quiz ID
@@ -224,12 +224,11 @@ export const createQuiz = (req, res) => {
       if (err) {
         console.error("Error fetching course category:", err);
         return res
-          .status(500)
           .json({ message: "Error fetching course category." });
       }
 
       if (courseResult.length === 0) {
-        return res.status(404).json({ message: "Course not found." });
+        return res.json({ message: "Course not found." });
       }
 
       const courseCategoryId = courseResult[0].course_category_id;
@@ -245,7 +244,7 @@ export const createQuiz = (req, res) => {
         (err, contextResults) => {
           if (err) {
             console.error("Error checking context:", err);
-            return res.status(500).json({ message: "Error checking context." });
+            return res.json({ message: "Error checking context." });
           }
 
           let depth = 1; // Default depth
@@ -267,7 +266,6 @@ export const createQuiz = (req, res) => {
               if (err) {
                 console.error("Error inserting context:", err);
                 return res
-                  .status(500)
                   .json({ message: "Error inserting context." });
               }
 
@@ -281,12 +279,11 @@ export const createQuiz = (req, res) => {
                 if (err) {
                   console.error("Error updating quiz with context_id:", err);
                   return res
-                    .status(500)
                     .json({ message: "Error updating quiz with context ID." });
                 }
 
                 // Return success response
-                res.status(200).json({
+                res.json({
                   message: "Quiz and context created successfully.",
                   quizId,
                   contextId,
@@ -394,99 +391,105 @@ export function saveQuizAttempt(req, res) {
     LIMIT 1
   `;
 
-  db.query(
-    queryPreviousAttemptCount,
-    [user_id, ass_id, module],
-    (err, dbRes) => {
-      if (err) {
-        console.log(err);
-        return res.status(500).json({ error: "Database error" });
-      }
+  db.query(queryPreviousAttemptCount, [user_id, ass_id, module], (err, dbRes) => {
+    if (err) {
+      console.log(err);
+      return res.status(500).json({ error: "Database error" });
+    }
 
-      let newAttemptCount = 1; // Default to 1 if no previous attempts are found
+    let newAttemptCount = 1; // Default to 1 if no previous attempts are found
 
-      // If there are previous attempts, get the latest count and increment
-      if (dbRes.length > 0) {
-        const previousAttempt = dbRes[0];
-        newAttemptCount = previousAttempt.attempt_count + 1;
-      }
+    // If there are previous attempts, get the latest count and increment
+    if (dbRes.length > 0) {
+      const previousAttempt = dbRes[0];
+      newAttemptCount = previousAttempt.attempt_count + 1;
+    }
 
-      // Step 3: Insert a new row with the new attempt count
-      const queryInsertNewAttempt = `
+    // Step 3: Insert a new row with the new attempt count
+    const queryInsertNewAttempt = `
       INSERT INTO quiz_attempt (user_id, result, attempt_count, assessment_type, attempt_timestamp, score, moduleid)
       VALUES (?, ?, ?, ?, NOW(), ?, ?)
     `;
 
-      db.query(
-        queryInsertNewAttempt,
-        [
-          user_id,
-          JSON.stringify(result),
-          newAttemptCount,
-          ass_id,
-          score,
-          module,
-        ],
-        (insertErr, insertResult) => {
-          if (insertErr) {
-            console.log(insertErr);
-            return res.json({ error: "Error inserting new attempt" });
-          }
+    db.query(
+      queryInsertNewAttempt,
+      [user_id, JSON.stringify(result), newAttemptCount, ass_id, score, module],
+      (insertErr, insertResult) => {
+        if (insertErr) {
+          console.log(insertErr);
+          return res.json({ error: "Error inserting new attempt" });
+        }
 
-          // Step 4: After inserting, retrieve all attempts for the user and assessment_type
-          const queryRetrieveAllAttempts = `
-          SELECT * 
-          FROM quiz_attempt
-          WHERE user_id = ? AND assessment_type = ? AND moduleid = ?
-          ORDER BY attempt_timestamp DESC
+        // Step 4: Insert into the standardlog table based on ass_id
+        let eventName;
+        if (ass_id == 1) {
+          eventName = "Pre-Assessment";
+        } else if (ass_id == 2) {
+          eventName = "Post-Assessment";
+        }
+
+        const action = `${eventName} completed for module ${module}`;
+        const queryInsertLog = `
+          INSERT INTO standardlog (user_id, eventname, action)
+          VALUES (?, ?, ?)
         `;
 
-          db.query(
-            queryRetrieveAllAttempts,
-            [user_id, ass_id, module],
-            (retrieveErr, allAttempts) => {
-              if (retrieveErr) {
-                console.log(retrieveErr);
-                return res.json({ error: "Error retrieving attempts data" });
+        db.query(queryInsertLog, [user_id, eventName, action], (logErr, logResult) => {
+          if (logErr) {
+            console.log(logErr);
+            return res.status(500).json({ error: "Error logging the event" });
+          }
+
+          // Step 5: After inserting the log, retrieve all attempts for the user and assessment_type
+          const queryRetrieveAllAttempts = `
+            SELECT * 
+            FROM quiz_attempt
+            WHERE user_id = ? AND assessment_type = ? AND moduleid = ?
+            ORDER BY attempt_timestamp DESC
+          `;
+
+          db.query(queryRetrieveAllAttempts, [user_id, ass_id, module], (retrieveErr, allAttempts) => {
+            if (retrieveErr) {
+              console.log(retrieveErr);
+              return res.json({ error: "Error retrieving attempts data" });
+            }
+
+            // Process each attempt to add counts for total and correct answers
+            const attemptsWithCounts = allAttempts.map((attempt) => {
+              let parsedResult;
+              try {
+                parsedResult =
+                  typeof attempt.result === "string"
+                    ? JSON.parse(attempt.result)
+                    : attempt.result;
+              } catch (parseError) {
+                console.error("Error parsing result:", parseError);
+                parsedResult = [];
               }
 
-              // Process each attempt to add counts for total and correct answers
-              const attemptsWithCounts = allAttempts.map((attempt) => {
-                let parsedResult;
-                try {
-                  parsedResult =
-                    typeof attempt.result === "string"
-                      ? JSON.parse(attempt.result)
-                      : attempt.result;
-                } catch (parseError) {
-                  console.error("Error parsing result:", parseError);
-                  parsedResult = [];
-                }
+              // Count the total answers and correct answers
+              const totalAnswers = parsedResult.length;
+              const correctAnswers = parsedResult.filter(
+                (question) => question.correct
+              ).length;
 
-                // Count the total answers and correct answers
-                const totalAnswers = parsedResult.length;
-                const correctAnswers = parsedResult.filter(
-                  (question) => question.correct
-                ).length;
+              // Return the attempt with counts
+              return {
+                ...attempt,
+                totalAnswers,
+                correctAnswers,
+              };
+            });
 
-                // Return the attempt with counts
-                return {
-                  ...attempt,
-                  totalAnswers,
-                  correctAnswers,
-                };
-              });
-
-              // Return all the attempts in the response with counts
-              return res.json({
-                message: "Quiz attempt saved successfully",
-                score,
-                attempts: attemptsWithCounts, // Return attempts with counts
-              });
-            }
-          );
-        }
-      );
-    }
-  );
+            // Return all the attempts in the response with counts
+            return res.json({
+              message: "Quiz attempt and log saved successfully",
+              score,
+              attempts: attemptsWithCounts, // Return attempts with counts
+            });
+          });
+        });
+      }
+    );
+  });
 }

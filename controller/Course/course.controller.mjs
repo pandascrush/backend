@@ -635,7 +635,7 @@ export const submitCourseContent = (req, res) => {
                 });
               }
 
-              res.status(200).json({
+              res.json({
                 message: "Content submitted and updated successfully",
                 pageId,
                 contextId,
