@@ -1,7 +1,7 @@
 import express from "express";
-import { paymentInitiate } from "../../controller/Payment/payment.controller.mjs";
+import { createPaymentIntent } from "../../controller/Payment/payment.controller.mjs";
 const router = express.Router();
 
-router.post("/create-payment-intent", paymentInitiate);
+router.post("/create-payment-intent", createPaymentIntent);
 
 export default router;

@@ -13,7 +13,7 @@ export const getUserById = (req, res) => {
 
   // SQL query to fetch user details by ID and quiz_attempt for assessment_type = 2
   const query = `
-      SELECT u.first_name, u.last_name, u.email, u.user_id, q.moduleid, q.assessment_type, q.score
+      SELECT u.first_name,u.profile_image,u.password,u.phone_no,u.profession, u.last_name, u.email, u.user_id, q.moduleid, q.assessment_type, q.score
       FROM user u
       LEFT JOIN quiz_attempt q ON u.user_id = q.user_id
       WHERE u.user_id = ? AND q.assessment_type = 2
@@ -57,14 +57,47 @@ export const getUserById = (req, res) => {
     const completionPercentage = (completedModules / 18) * 100;
 
     // Send back the user details, modules, and completion percentage
+    // const profile_image = ;
     res.json({
       first_name: result[0].first_name,
       last_name: result[0].last_name,
       email: result[0].email,
+      password: result[0].password,
+      phone: result[0].phone_no,
       user_id: result[0].user_id,
+      profession: result[0].profession,
+      profile_image: process.env.URL + result[0].profile_image,
       completion_percentage: completionPercentage.toFixed(2),
       modules: modules,
     });
+  });
+};
+
+export const updateUserProfile = (req, res) => {
+  const { id } = req.params;
+  const { name, email, phone, profession } = req.body;
+
+  // Handle image upload, use a default if no file is uploaded
+  const profile_image = req.file
+    ? path.join("/uploads", req.file.filename)
+    : "default_image.jpg";
+
+  const fieldsToUpdate = {};
+
+  // Prepare dynamic updates based on provided fields
+  if (name) fieldsToUpdate.first_name = name;
+  if (email) fieldsToUpdate.email = email;
+  if (phone) fieldsToUpdate.phone_no = phone;
+  if (profession) fieldsToUpdate.profession = profession;
+  fieldsToUpdate.profile_image = profile_image;
+
+  const query = "UPDATE user SET ? WHERE user_id = ?";
+  db.query(query, [fieldsToUpdate, id], (err, result) => {
+    if (err) {
+      console.error("Error updating user:", err);
+      return res.json({ message: "Failed to update user." });
+    }
+    res.json({ message: "User updated successfully." });
   });
 };
 
@@ -217,10 +250,14 @@ export const checkUserPaymentStatus = (req, res) => {
 };
 
 export const getAllUsers = (req, res) => {
-  const sqlQuery = `SELECT *
-FROM user
-WHERE user_id NOT IN (1, 2);
-`; // Raw SQL query to fetch all users
+  // SQL query to fetch all users and their isActive status, and count the number of active users
+  const sqlQuery = `
+    SELECT u.*, ut.isActive, 
+    (SELECT COUNT(*) FROM user u2 LEFT JOIN user_track ut2 ON u2.user_id = ut2.user_id WHERE ut2.isActive = 1 AND u2.user_id NOT IN (1, 2)) AS activeUserCount
+    FROM user u
+    LEFT JOIN user_track ut ON u.user_id = ut.user_id
+    WHERE u.user_id NOT IN (1, 2);
+  `;
 
   // Execute the query
   db.query(sqlQuery, (err, results) => {
@@ -233,11 +270,18 @@ WHERE user_id NOT IN (1, 2);
       });
     }
 
-    // Send the results as a response
+    // Extract the active user count from the first result
+    const activeUserCount = results.length > 0 ? results[0].activeUserCount : 0;
+
+    // Remove the activeUserCount field from each row (since it only needs to be sent once)
+    results.forEach((user) => delete user.activeUserCount);
+
+    // Send the results and active user count as a response
     res.status(200).json({
       success: true,
       message: "All users fetched successfully",
       users: results,
+      activeUserCount, // Include the overall active user count in the response
     });
   });
 };
