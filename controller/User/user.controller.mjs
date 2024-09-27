@@ -303,42 +303,84 @@ export const composeMessage = (req, res) => {
     }
 
     if (userResult.length === 0) {
-      // Access directly as userResult is an array
       return res.json({ message: "User not found." });
     }
 
     const senderName = userResult[0].first_name; // Get the first name
 
-    // Email options
-    const mailOptions = {
-      from: "sivaranji5670@gmail.com", // Your sender email
-      to: email,
-      subject: subject,
-      text: message,
-    };
+    // Split the email variable by commas to handle multiple user IDs
+    const userIds = email.split(',').map((id) => id.trim());
 
-    // Send the email
-    transporter.sendMail(mailOptions, (err, info) => {
-      if (err) {
-        console.error("Error sending email:", err);
-        return res.json({ message: "Failed to send the message." });
+    // Fetch the email addresses for the provided user IDs
+    const emailQuery = `SELECT email FROM user WHERE user_id IN (${userIds.join(',')})`;
+    db.query(emailQuery, (emailErr, emailResult) => {
+      if (emailErr) {
+        console.error("Error fetching recipient emails:", emailErr);
+        return res.json({ message: "Failed to fetch recipient emails." });
       }
 
-      // Store the message in the database
-      const query =
-        "INSERT INTO user_msg_compose (sender_name, subject, receiver_email, timestamp, user_id) VALUES (?, ?, ?, ?, ?)";
-      db.query(
-        query,
-        [senderName, message, email, new Date(), user_id],
-        (dbErr, dbResult) => {
-          if (dbErr) {
-            console.error("Error storing data:", dbErr);
-            return res.json({ message: "Failed to store the message." });
-          }
+      if (emailResult.length === 0) {
+        return res.json({ message: "No valid email addresses found." });
+      }
 
-          return res.json({ message: "Message sent and stored successfully!" });
-        }
-      );
+      // Prepare the list of emails to send messages to
+      const emailList = emailResult.map((row) => row.email);
+
+      // Prepare to store any email sending/storing errors
+      let emailErrors = [];
+      let successfulSends = 0;
+
+      // Send emails to each recipient and store each in the database
+      emailList.forEach((recipientEmail, index) => {
+        const mailOptions = {
+          from: "sivaranji5670@gmail.com", // Your sender email
+          to: recipientEmail,
+          subject: subject,
+          text: message,
+        };
+
+        // Send the email
+        transporter.sendMail(mailOptions, (err, info) => {
+          if (err) {
+            console.error(`Error sending email to ${recipientEmail}:`, err);
+            emailErrors.push(recipientEmail);
+          } else {
+            // Store the message in the database for each recipient
+            const query =
+              "INSERT INTO user_msg_compose (sender_name, subject, receiver_email, timestamp, user_id) VALUES (?, ?, ?, ?, ?)";
+            db.query(
+              query,
+              [senderName, subject, recipientEmail, new Date(), user_id],
+              (dbErr, dbResult) => {
+                if (dbErr) {
+                  console.error(
+                    `Error storing message for ${recipientEmail}:`,
+                    dbErr
+                  );
+                  emailErrors.push(recipientEmail);
+                } else {
+                  successfulSends++;
+                }
+
+                // After processing all emails, send the final response
+                if (index === emailList.length - 1) {
+                  if (emailErrors.length > 0) {
+                    return res.json({
+                      message: `Message sent to some recipients, but failed for: ${emailErrors.join(
+                        ", "
+                      )}`,
+                    });
+                  } else {
+                    return res.json({
+                      message: `Message sent and stored successfully to all recipients!`,
+                    });
+                  }
+                }
+              }
+            );
+          }
+        });
+      });
     });
   });
 };
@@ -351,6 +393,27 @@ export const getAllMessage = (req, res) => {
       res.json({ err: err });
     } else {
       res.json({ msg: result });
+    }
+  });
+};
+
+export const userPaymentVerification = (req, res) => {
+  const { id } = req.params;
+
+  // Correct SQL query to fetch has_paid based on user_id
+  const sql = `SELECT has_paid FROM user WHERE user_id = ?`;
+
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      return res.json({ error: err });
+    }
+
+    // Assuming result is an array and has_paid is the first value
+    if (result.length > 0) {
+      const hasPaid = result[0].has_paid === 1; // Convert 1 to true and 0 to false
+      res.json({ hasPaid });
+    } else {
+      res.json({ hasPaid: false }); // Default to false if no result
     }
   });
 };

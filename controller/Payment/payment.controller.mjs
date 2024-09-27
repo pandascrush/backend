@@ -7,6 +7,7 @@ const stripe = new Stripe(process.env.STRIPE_PRIVATE_KEY);
 export const createPaymentIntent = async (req, res) => {
   try {
     const { items, success_url, cancel_url } = req.body;
+    const {id} = req.params
 
     if (!items || items.length === 0) {
       return res.status(400).json({ error: "No items provided." });
@@ -27,8 +28,8 @@ export const createPaymentIntent = async (req, res) => {
       payment_method_types: ["card"],
       line_items: lineItems,
       mode: "payment",
-      success_url: `${process.env.DOMAIN}/success`, // Default success page
-      cancel_url: `${process.env.DOMAIN}/cancel`, // Default cancel page
+      success_url: `${process.env.DOMAIN}/user/${id}/payment`, // Default success page
+      cancel_url: `${process.env.DOMAIN}/user/${id}/payment`, // Default cancel page
     });
 
     res.json({ id: session.id });
