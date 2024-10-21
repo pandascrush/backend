@@ -935,15 +935,11 @@ const handleQuizQuestions = (quizData, callback) => {
 
   let questionIdsArray = [];
 
-  // Check if `question_ids` is already a JSON array or a CSV string
   if (typeof question_ids === "string") {
-    // If it's a CSV string, split it into an array
     questionIdsArray = question_ids.split(",").map(Number);
   } else if (typeof question_ids === "object" && Array.isArray(question_ids)) {
-    // If it's already a JSON array
     questionIdsArray = question_ids;
   } else if (question_ids) {
-    // In case it's stored as a JSON string but is still valid JSON (unlikely here but just in case)
     try {
       questionIdsArray = JSON.parse(question_ids);
     } catch (error) {
@@ -953,9 +949,8 @@ const handleQuizQuestions = (quizData, callback) => {
   }
 
   if (!question_ids || questionIdsArray.length === 0) {
-    // If question_ids is empty or null, fetch random questions based on max_no_of_questions
     const fetchRandomQuestionsQuery = `
-      SELECT id, text, correct_answer, moduleid, courseid 
+      SELECT id, text, correct_answer, question_type, moduleid, courseid 
       FROM quiz_text 
       WHERE context_id = ? 
       ORDER BY RAND() 
@@ -974,9 +969,8 @@ const handleQuizQuestions = (quizData, callback) => {
       }
     );
   } else {
-    // If question_ids exist, fetch those specific questions
     const fetchSpecificQuestionsQuery = `
-      SELECT id, text, correct_answer, moduleid, courseid 
+      SELECT id, text, correct_answer, question_type, moduleid, courseid 
       FROM quiz_text 
       WHERE id IN (?)
     `;
@@ -995,7 +989,7 @@ const handleQuizQuestions = (quizData, callback) => {
   }
 };
 
-// Helper function to fetch options for each question
+// Helper function to fetch options for each question, including match-type questions
 const fetchQuestionOptions = (questions, callback) => {
   if (!questions || questions.length === 0) {
     return callback(null, []);
@@ -1004,7 +998,7 @@ const fetchQuestionOptions = (questions, callback) => {
   const questionIds = questions.map((q) => q.id);
 
   const fetchOptionsQuery = `
-    SELECT id, \`option\`
+    SELECT id, \`option\`, question_type 
     FROM quiz_text
     WHERE id IN (?)
   `;
@@ -1015,26 +1009,101 @@ const fetchQuestionOptions = (questions, callback) => {
       return callback({ message: "Error fetching question options" });
     }
 
-    // Attach options to questions
-    const questionsWithOptions = questions.map((question) => {
-      const questionOption = options.find((opt) => opt.id === question.id);
-      if (questionOption) {
-        try {
-          // Check if the option is already an object, if not parse it
-          const parsedOptions =
-            typeof questionOption.option === "string"
-              ? JSON.parse(questionOption.option) // Parse only if it's a string
-              : questionOption.option; // Use it directly if it's an object
+    const tasks = questions.map((question) => {
+      return new Promise((resolve, reject) => {
+        const questionOption = options.find((opt) => opt.id === question.id);
 
-          question.options = parsedOptions; // Attach parsed options array to the question
-        } catch (jsonErr) {
-          console.error("Error parsing JSON options:", jsonErr);
+        if (questionOption) {
+          if (questionOption.question_type === "match") {
+            // Fetch subquestions and options for match-type questions
+            fetchMatchSubquestionsAndOptions(question.id, (err, matchData) => {
+              if (err) {
+                reject("Error fetching match questions");
+              } else {
+                question.match_subquestions = matchData.subquestions;
+                question.match_options = matchData.options;
+                resolve(question);
+              }
+            });
+          } else {
+            try {
+              const parsedOptions =
+                typeof questionOption.option === "string"
+                  ? JSON.parse(questionOption.option)
+                  : questionOption.option;
+
+              question.options = parsedOptions;
+              resolve(question);
+            } catch (jsonErr) {
+              reject("Error parsing JSON options");
+            }
+          }
+        } else {
+          resolve(question);
         }
-      }
-      return question;
+      });
     });
 
-    callback(null, questionsWithOptions);
+    // Wait for all promises (fetches) to complete
+    Promise.all(tasks)
+      .then((updatedQuestions) => callback(null, updatedQuestions))
+      .catch((err) => {
+        console.error(err);
+        callback({ message: "Error fetching question options" });
+      });
+  });
+};
+
+const fetchMatchSubquestionsAndOptions = (quiz_text_id, callback) => {
+  // Step 1: Fetch subquestions associated with the quiz
+  const fetchSubquestionsQuery = `
+    SELECT id AS subquestion_id, subquestion_text 
+    FROM match_subquestions 
+    WHERE quiz_text_id = ?
+  `;
+
+  db.query(fetchSubquestionsQuery, [quiz_text_id], (err, subquestions) => {
+    if (err) {
+      console.error("Error fetching match subquestions:", err);
+      return callback({ message: "Error fetching match subquestions" });
+    }
+
+    if (subquestions.length === 0) {
+      return callback(null, { subquestions: [] }); // No subquestions found
+    }
+
+    // Step 2: Collect subquestion IDs
+    const subquestionIds = subquestions.map(subq => subq.subquestion_id);
+
+    // Use a parameterized query with the list of subquestion IDs
+    const fetchOptionsQuery = `
+      SELECT subquestion_id, option_text 
+      FROM match_options 
+      WHERE subquestion_id IN (?)
+    `;
+
+    // Use the correct way to pass an array to the SQL query
+    db.query(fetchOptionsQuery, [subquestionIds], (err, options) => {
+      if (err) {
+        console.error("Error fetching match options:", err);
+        return callback({ message: "Error fetching match options" });
+      }
+
+      // Step 3: Format subquestions with their associated options
+      const formattedSubquestions = subquestions.map(subq => {
+        const matchedOptions = options.filter(opt => opt.subquestion_id === subq.subquestion_id);
+        return {
+          subquestion_id: subq.subquestion_id,
+          subquestion_text: subq.subquestion_text,
+          options: options
+        };
+      });
+
+      // Step 4: Return subquestions with their associated options
+      callback(null, {
+        subquestions: formattedSubquestions,
+      });
+    });
   });
 };
 

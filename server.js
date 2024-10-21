@@ -10,6 +10,7 @@ import quizRouter from "./routes/Course/quiz.routes.mjs";
 import userRouter from "./routes/User/user.routes.mjs";
 import cookieParser from "cookie-parser";
 import paymentRouter from "./routes/Payment/payment.routes.mjs";
+import adminRouter from "./routes/admin/admin.routes.mjs";
 
 dotenv.config();
 const app = express();
@@ -32,6 +33,7 @@ app.use("/course", courseRoute);
 app.use("/quiz", quizRouter);
 app.use("/user", userRouter);
 app.use("/payment", paymentRouter);
+app.use("/admin", adminRouter);
 app.use("/uploads", express.static("uploads"));
 
 //richtext
@@ -49,6 +51,11 @@ app.get("/content", (req, res) => {
 // Test rout
 app.get("/api/test", (req, res) => {
   res.json({ msg: "hello world" });
+});
+
+app.post("/webhook", (req, res) => {
+  console.log("Webhook received");
+  res.status(200).send("OK");
 });
 
 // Start server

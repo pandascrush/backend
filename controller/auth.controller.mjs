@@ -4,6 +4,142 @@ import jwt from "jsonwebtoken";
 import transporter from "../config/email.config.mjs";
 const saltRounds = 10;
 
+export const registerBusiness = async (req, res) => {
+  const {
+    company_name,
+    company_email_id,
+    country,
+    zipcode,
+    company_phone_number,
+    spoc_name,
+    spoc_email_id,
+    spoc_phone_number,
+    company_size,
+    company_type,
+    password, // User's raw password
+  } = req.body;
+
+  // Hash the password using bcrypt before storing
+  const saltRounds = 10;
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Start transaction
+    db.beginTransaction((err) => {
+      if (err) {
+        return res.json({ message: "Error starting database transaction" });
+      }
+
+      // Insert the business information into the business_register table
+      const insertBusinessQuery = `INSERT INTO business_register 
+                                   (company_name, company_email_id, country, zipcode, company_phone_number, spoc_name, spoc_email_id, spoc_phone_number, company_size, company_type, password)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+      db.query(
+        insertBusinessQuery,
+        [
+          company_name,
+          company_email_id,
+          country,
+          zipcode,
+          company_phone_number,
+          spoc_name,
+          spoc_email_id,
+          spoc_phone_number,
+          company_size,
+          company_type,
+          hashedPassword, // Store hashed password
+        ],
+        (err, result) => {
+          if (err) {
+            return db.rollback(() => {
+              console.error(err);
+              res.json({ message: "Error registering business" });
+            });
+          }
+
+          const companyId = result.insertId; // Get the inserted company_id
+
+          // Now insert into the auth table for the SPOC
+          const insertAuthQuery = `INSERT INTO auth (company_id, email, password, role_id) VALUES (?, ?, ?, ?)`;
+          db.query(
+            insertAuthQuery,
+            [companyId, spoc_email_id, hashedPassword, 5], // role_id is 5 for SPOC
+            (err, authResult) => {
+              if (err) {
+                return db.rollback(() => {
+                  console.error(err);
+                  res.json({ message: "Error registering SPOC in auth table" });
+                });
+              }
+
+              // Insert into the context table after inserting into auth
+              const insertContextQuery = `INSERT INTO context (contextlevel, instanceid) VALUES (?, ?)`;
+              db.query(
+                insertContextQuery,
+                [7, companyId], // contextlevel = 7, instanceid = companyId
+                (err, contextResult) => {
+                  if (err) {
+                    return db.rollback(() => {
+                      console.error(err);
+                      res.json({
+                        message: "Error inserting into context table",
+                      });
+                    });
+                  }
+
+                  const contextId = contextResult.insertId; // Get the inserted context_id
+
+                  // Update the business_register table with the context_id
+                  const updateBusinessQuery = `UPDATE business_register SET context_id = ? WHERE company_id = ?`;
+                  db.query(
+                    updateBusinessQuery,
+                    [contextId, companyId],
+                    (err, updateResult) => {
+                      if (err) {
+                        return db.rollback(() => {
+                          console.error(err);
+                          res.json({
+                            message:
+                              "Error updating business_register with context_id",
+                          });
+                        });
+                      }
+
+                      // Commit the transaction if all inserts succeed
+                      db.commit((err) => {
+                        if (err) {
+                          return db.rollback(() => {
+                            console.error(err);
+                            res.json({
+                              message: "Error committing transaction",
+                            });
+                          });
+                        }
+
+                        res.json({
+                          message: "Business registered successfully",
+                          business_id: companyId,
+                          spoc_id: authResult.insertId,
+                          context_id: contextId,
+                        });
+                      });
+                    }
+                  );
+                }
+              );
+            }
+          );
+        }
+      );
+    });
+  } catch (error) {
+    console.error("Error processing request:", error);
+    res.status(500).json({ message: "Error processing registration" });
+  }
+};
+
 export const registerUser = (req, res) => {
   const { fullname, email, phone_no, qualification, jobStatus, password } =
     req.body;
@@ -177,6 +313,242 @@ export const registerUser = (req, res) => {
                                 });
                               }
                             });
+                          }
+                        );
+                      }
+                    );
+                  }
+                );
+              }
+            );
+          });
+        }
+      );
+    }
+  );
+};
+
+export const invitedRegisterUser = (req, res) => {
+  const { fullname, email, phone_no, qualification, jobStatus, password } =
+    req.body;
+
+  const { id } = req.params;
+
+  if (!fullname || !email || !phone_no || !password) {
+    return res.json({ message: "All fields are required." });
+  }
+
+  // Check if email exists in User or Auth tables
+  db.query(
+    "SELECT email FROM user WHERE email = ?",
+    [email],
+    (err, userRows) => {
+      if (err) {
+        console.error(err);
+        return res.json({ message: "Error checking email in User table." });
+      }
+
+      if (userRows.length > 0) {
+        return res.json({ message: "Email already exists in User table." });
+      }
+
+      db.query(
+        "SELECT email FROM auth WHERE email = ?",
+        [email],
+        (err, authRows) => {
+          if (err) {
+            console.error(err);
+            return res.json({ message: "Error checking email in Auth table." });
+          }
+
+          if (authRows.length > 0) {
+            return res.json({ message: "Email already exists in Auth table." });
+          }
+
+          // Hash the password
+          bcrypt.hash(password, saltRounds, (err, hashedPassword) => {
+            if (err) {
+              console.error(err);
+              return res
+                .status(500)
+                .json({ message: "Error hashing password." });
+            }
+
+            // Insert into User table
+            db.query(
+              "INSERT INTO user (first_name, email, phone_no, password, qualification, profession, has_paid) VALUES (?, ?, ?, ?,?,?,?)",
+              [
+                fullname,
+                email,
+                phone_no,
+                hashedPassword,
+                qualification,
+                jobStatus,
+                1,
+              ],
+              (err, userResult) => {
+                if (err) {
+                  console.error(err);
+                  return res.json({
+                    message: "Error inserting into User table.",
+                  });
+                }
+
+                // Get user ID
+                const userId = userResult.insertId;
+
+                // Insert into Auth table
+                db.query(
+                  "INSERT INTO auth (email, password, user_id, role_id) VALUES (?, ?, ?, ?)",
+                  [email, hashedPassword, userId, 4],
+                  (err) => {
+                    if (err) {
+                      console.error(err);
+
+                      // Rollback User table insert if Auth insert fails
+                      db.query(
+                        "DELETE FROM user WHERE email = ?",
+                        [email],
+                        () => {}
+                      );
+
+                      return res.json({
+                        message: "Error inserting into Auth table.",
+                      });
+                    }
+
+                    // Insert into Context table
+                    db.query(
+                      "INSERT INTO context (contextlevel, instanceid) VALUES (?, ?)",
+                      [2, userId],
+                      (err, contextResult) => {
+                        if (err) {
+                          console.error(err);
+
+                          // Rollback the inserts if Context insert fails
+                          db.query(
+                            "DELETE FROM user WHERE email = ?",
+                            [email],
+                            () => {}
+                          );
+                          db.query(
+                            "DELETE FROM auth WHERE email = ?",
+                            [email],
+                            () => {}
+                          );
+
+                          return res.json({
+                            message: "Error inserting into Context table.",
+                          });
+                        }
+
+                        const contextId = contextResult.insertId;
+
+                        // Update the User table with context_id
+                        db.query(
+                          "UPDATE user SET context_id = ? WHERE email = ?",
+                          [contextId, email],
+                          (err) => {
+                            if (err) {
+                              console.error(err);
+
+                              // Rollback the inserts if User update fails
+                              db.query(
+                                "DELETE FROM user WHERE email = ?",
+                                [email],
+                                () => {}
+                              );
+                              db.query(
+                                "DELETE FROM auth WHERE email = ?",
+                                [email],
+                                () => {}
+                              );
+
+                              return res.json({
+                                message:
+                                  "Error updating User table with context_id.",
+                              });
+                            }
+
+                            // Insert into user_enrollment table
+                            const timeCreated = new Date();
+                            db.query(
+                              "INSERT INTO user_enrollment (user_id, time_created,company_id,email) VALUES (?, ?, ?, ?)",
+                              [userId, timeCreated, id, email],
+                              (enrollErr) => {
+                                if (enrollErr) {
+                                  console.error(enrollErr);
+
+                                  // Rollback if user_enrollment insert fails
+                                  db.query(
+                                    "DELETE FROM user WHERE email = ?",
+                                    [email],
+                                    () => {}
+                                  );
+                                  db.query(
+                                    "DELETE FROM auth WHERE email = ?",
+                                    [email],
+                                    () => {}
+                                  );
+                                  db.query(
+                                    "DELETE FROM context WHERE instanceid = ?",
+                                    [userId],
+                                    () => {}
+                                  );
+
+                                  return res.json({
+                                    message:
+                                      "Error inserting into user_enrollment table.",
+                                  });
+                                }
+
+                                // Send welcome email
+                                const mailOptions = {
+                                  from: "sivaranji5670@gmail.com",
+                                  to: email,
+                                  subject: "Welcome to LMS",
+                                  text: `Hello ${fullname},\n\nThank you for registering with our LMS platform!\n\nBest Regards,\nLMS Team`,
+                                };
+
+                                transporter.sendMail(mailOptions, (error) => {
+                                  if (error) {
+                                    console.error(error);
+
+                                    // Rollback the inserts if email fails
+                                    db.query(
+                                      "DELETE FROM user WHERE email = ?",
+                                      [email],
+                                      () => {}
+                                    );
+                                    db.query(
+                                      "DELETE FROM auth WHERE email = ?",
+                                      [email],
+                                      () => {}
+                                    );
+                                    db.query(
+                                      "DELETE FROM context WHERE instanceid = ?",
+                                      [userId],
+                                      () => {}
+                                    );
+                                    db.query(
+                                      "DELETE FROM user_enrollment WHERE user_id = ?",
+                                      [userId],
+                                      () => {}
+                                    );
+
+                                    return res.json({
+                                      message:
+                                        "Registration failed. Please try again.",
+                                    });
+                                  } else {
+                                    res.json({
+                                      message:
+                                        "User registered and enrolled successfully.",
+                                    });
+                                  }
+                                });
+                              }
+                            );
                           }
                         );
                       }
