@@ -193,7 +193,7 @@ export const getQuestionByModule = (req, res) => {
       if (results.length > 0) {
         // Step 2: Create a list of promises for match type questions
         const promises = results.map((question) => {
-          if (question.question_type === 'match') {
+          if (question.question_type === "match") {
             // Step 3: Fetch subquestions for match type questions
             return new Promise((resolve, reject) => {
               db.query(
@@ -205,27 +205,32 @@ export const getQuestionByModule = (req, res) => {
                   }
 
                   // Step 4: For each subquestion, fetch its options
-                  const subQuestionPromises = subQuestions.map((subQuestion) => {
-                    return new Promise((resolveOptions, rejectOptions) => {
-                      db.query(
-                        "SELECT * FROM match_options WHERE subquestion_id = ?",
-                        [subQuestion.id],
-                        (err, options) => {
-                          if (err) {
-                            return rejectOptions(err);
+                  const subQuestionPromises = subQuestions.map(
+                    (subQuestion) => {
+                      return new Promise((resolveOptions, rejectOptions) => {
+                        db.query(
+                          "SELECT * FROM match_options WHERE subquestion_id = ?",
+                          [subQuestion.id],
+                          (err, options) => {
+                            if (err) {
+                              return rejectOptions(err);
+                            }
+                            // Resolve with the subquestion and its options
+                            resolveOptions({ ...subQuestion, options });
                           }
-                          // Resolve with the subquestion and its options
-                          resolveOptions({ ...subQuestion, options });
-                        }
-                      );
-                    });
-                  });
+                        );
+                      });
+                    }
+                  );
 
                   // Wait for all subquestion option queries to resolve
                   Promise.all(subQuestionPromises)
                     .then((subQuestionsWithOptions) => {
                       // Resolve with the original question and its subquestions
-                      resolve({ ...question, subQuestions: subQuestionsWithOptions });
+                      resolve({
+                        ...question,
+                        subQuestions: subQuestionsWithOptions,
+                      });
                     })
                     .catch(reject);
                 }
@@ -261,29 +266,117 @@ export const getQuestionByModule = (req, res) => {
 export const updateQuestionByModule = (req, res) => {
   const { moduleId, questions } = req.body;
 
-  // console.log(questions);
-
   // Iterate over each question
   for (const questionId in questions) {
     const questionData = questions[questionId];
-    const { text, options, correct_answer } = questionData;
+    const {
+      text,
+      options,
+      correct_answer,
+      check_data,
+      question_type,
+      subQuestions,
+    } = questionData;
 
     // Since options is a JSON array, we can store it directly as a JSON field in the database
     const optionsJson = JSON.stringify(options);
 
-    // Update the question text, correct answer, and options (as JSON)
-    db.query(
-      "UPDATE quiz_text SET text = ?, correct_answer = ?, `option` = ? WHERE id = ?",
-      [text, correct_answer, optionsJson, questionId],
-      (err, result) => {
+    // SQL query and parameters, initialized empty
+    let sqlQuery = "";
+    let queryParams = [];
+
+    if (question_type === "multiple_choice") {
+      // For multiple choice, update `correct_answer`
+      sqlQuery =
+        "UPDATE quiz_text SET text = ?, correct_answer = ?, `option` = ? WHERE id = ?";
+      queryParams = [text, correct_answer, optionsJson, questionId];
+    } else if (question_type === "check") {
+      // For check type, update `check_data` field instead of `correct_answer`
+      const checkDataJson = JSON.stringify(check_data); // Convert check_data to JSON
+      sqlQuery =
+        "UPDATE quiz_text SET text = ?, check_data = ?, `option` = ? WHERE id = ?";
+      queryParams = [text, checkDataJson, optionsJson, questionId];
+    } else if (question_type === "descriptive") {
+      // For descriptive type, update only `text` and `option`
+      sqlQuery = "UPDATE quiz_text SET text = ?, `option` = ? WHERE id = ?";
+      queryParams = [text, optionsJson, questionId];
+    } else if (question_type === "match") {
+      // For match type, update the text only in quiz_text
+      sqlQuery = "UPDATE quiz_text SET text = ? WHERE id = ?";
+      queryParams = [text, questionId];
+
+      // Execute the query to update quiz_text
+      db.query(sqlQuery, queryParams, (err, result) => {
         if (err) {
-          console.error("Error updating question:", err);
+          console.error("Error updating match question in quiz_text:", err);
           return res.json({
-            error: "An error occurred while updating the question",
+            error: "An error occurred while updating the match question",
           });
         }
+
+        // Now handle the subquestions in match_subquestions table
+        if (subQuestions && subQuestions.length > 0) {
+          subQuestions.forEach((subQ) => {
+            const {
+              id: subQuestionId,
+              subquestion_text,
+              options: subOptions,
+            } = subQ;
+
+            // Update the subquestion text in match_subquestions
+            const updateSubQuestionQuery =
+              "UPDATE match_subquestions SET subquestion_text = ? WHERE id = ? AND quiz_text_id = ?";
+            db.query(
+              updateSubQuestionQuery,
+              [subquestion_text, subQuestionId, questionId],
+              (err, result) => {
+                if (err) {
+                  console.error(
+                    "Error updating subquestion in match_subquestions:",
+                    err
+                  );
+                }
+
+                // Now handle the options in match_options table
+                if (subOptions && subOptions.length > 0) {
+                  subOptions.forEach((option) => {
+                    const { id: optionId, option_text } = option;
+
+                    // Update option text in match_options
+                    const updateOptionQuery =
+                      "UPDATE match_options SET option_text = ? WHERE id = ? AND subquestion_id = ?";
+                    db.query(
+                      updateOptionQuery,
+                      [option_text, optionId, subQuestionId],
+                      (err, result) => {
+                        if (err) {
+                          console.error(
+                            "Error updating option in match_options:",
+                            err
+                          );
+                        }
+                      }
+                    );
+                  });
+                }
+              }
+            );
+          });
+        }
+      });
+
+      continue; // Move to the next iteration after handling the match question
+    }
+
+    // Execute the query for non-match types
+    db.query(sqlQuery, queryParams, (err, result) => {
+      if (err) {
+        console.error("Error updating question:", err);
+        return res.json({
+          error: "An error occurred while updating the question",
+        });
       }
-    );
+    });
   }
 
   // If everything goes well, send a success response

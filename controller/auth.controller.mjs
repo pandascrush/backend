@@ -2,6 +2,7 @@ import db from "../config/db.config.mjs";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import transporter from "../config/email.config.mjs";
+import path from "path";
 const saltRounds = 10;
 
 export const registerBusiness = async (req, res) => {
@@ -19,7 +20,6 @@ export const registerBusiness = async (req, res) => {
     password, // User's raw password
   } = req.body;
 
-  // Hash the password using bcrypt before storing
   const saltRounds = 10;
 
   try {
@@ -32,9 +32,10 @@ export const registerBusiness = async (req, res) => {
       }
 
       // Insert the business information into the business_register table
-      const insertBusinessQuery = `INSERT INTO business_register 
-                                   (company_name, company_email_id, country, zipcode, company_phone_number, spoc_name, spoc_email_id, spoc_phone_number, company_size, company_type, password)
-                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      const insertBusinessQuery = `
+        INSERT INTO business_register 
+        (company_name, company_email_id, country, zipcode, company_phone_number, spoc_name, spoc_email_id, spoc_phone_number, company_size, company_type, password)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       db.query(
         insertBusinessQuery,
@@ -74,57 +75,95 @@ export const registerBusiness = async (req, res) => {
                 });
               }
 
-              // Insert into the context table after inserting into auth
-              const insertContextQuery = `INSERT INTO context (contextlevel, instanceid) VALUES (?, ?)`;
+              // Insert into the license table
+              const insertLicenseQuery = `INSERT INTO license (company_id, license, invite, enrolled) VALUES (?, ?, ?, ?)`;
               db.query(
-                insertContextQuery,
-                [7, companyId], // contextlevel = 7, instanceid = companyId
-                (err, contextResult) => {
+                insertLicenseQuery,
+                [companyId, 0, 0, 0], // Set license, invite, and enrolled to 0
+                (err, licenseResult) => {
                   if (err) {
                     return db.rollback(() => {
                       console.error(err);
                       res.json({
-                        message: "Error inserting into context table",
+                        message: "Error inserting into license table",
                       });
                     });
                   }
 
-                  const contextId = contextResult.insertId; // Get the inserted context_id
-
-                  // Update the business_register table with the context_id
-                  const updateBusinessQuery = `UPDATE business_register SET context_id = ? WHERE company_id = ?`;
+                  // Insert into the context table after inserting into auth
+                  const insertContextQuery = `INSERT INTO context (contextlevel, instanceid) VALUES (?, ?)`;
                   db.query(
-                    updateBusinessQuery,
-                    [contextId, companyId],
-                    (err, updateResult) => {
+                    insertContextQuery,
+                    [7, companyId], // contextlevel = 7, instanceid = companyId
+                    (err, contextResult) => {
                       if (err) {
                         return db.rollback(() => {
                           console.error(err);
                           res.json({
-                            message:
-                              "Error updating business_register with context_id",
+                            message: "Error inserting into context table",
                           });
                         });
                       }
 
-                      // Commit the transaction if all inserts succeed
-                      db.commit((err) => {
-                        if (err) {
-                          return db.rollback(() => {
-                            console.error(err);
+                      const contextId = contextResult.insertId; // Get the inserted context_id
+
+                      // Update the business_register table with the context_id
+                      const updateBusinessQuery = `UPDATE business_register SET context_id = ? WHERE company_id = ?`;
+                      db.query(
+                        updateBusinessQuery,
+                        [contextId, companyId],
+                        (err, updateResult) => {
+                          if (err) {
+                            return db.rollback(() => {
+                              console.error(err);
+                              res.json({
+                                message:
+                                  "Error updating business_register with context_id",
+                              });
+                            });
+                          }
+
+                          // Commit the transaction if all inserts succeed
+                          db.commit(async (err) => {
+                            if (err) {
+                              return db.rollback(() => {
+                                console.error(err);
+                                res.json({
+                                  message: "Error committing transaction",
+                                });
+                              });
+                            }
+
+                            // Send confirmation email to SPOC
+                            const mailData = {
+                              from: "sivaranji5670@gmail.com",
+                              to: spoc_email_id,
+                              subject: "New User Confirmation",
+                              text: "mail sending by text format",
+                              html: `<b>Dear ${spoc_name},</b><br>
+                                     Please use the below URL for registration details <br>
+                                     UserName: ${spoc_email_id}<br>
+                                     Password: ${password}`,
+                            };
+
+                            // Send email
+                            transporter.sendMail(mailData, (error, info) => {
+                              if (error) {
+                                console.error("Error sending email:", error);
+                              } else {
+                                console.log("Email sent:", info.response);
+                              }
+                            });
+
                             res.json({
-                              message: "Error committing transaction",
+                              message: "Business registered successfully",
+                              business_id: companyId,
+                              spoc_id: authResult.insertId,
+                              context_id: contextId,
                             });
                           });
                         }
-
-                        res.json({
-                          message: "Business registered successfully",
-                          business_id: companyId,
-                          spoc_id: authResult.insertId,
-                          context_id: contextId,
-                        });
-                      });
+                      );
                     }
                   );
                 }
@@ -147,6 +186,8 @@ export const registerUser = (req, res) => {
   if (!fullname || !email || !phone_no || !password) {
     return res.json({ message: "All fields are required." });
   }
+
+  const defaultProfileImage = path.join("/uploads", "face1.jpg");
 
   // Check if email exists in User or Auth tables
   db.query(
@@ -186,7 +227,7 @@ export const registerUser = (req, res) => {
 
             // Insert into User table
             db.query(
-              "INSERT INTO user (first_name, email, phone_no, password, qualification, profession) VALUES (?, ?, ?, ?,?,?)",
+              "INSERT INTO user (first_name, email, phone_no, password, qualification, profession,profile_image) VALUES (?,?, ?, ?, ?,?,?)",
               [
                 fullname,
                 email,
@@ -194,6 +235,7 @@ export const registerUser = (req, res) => {
                 hashedPassword,
                 qualification,
                 jobStatus,
+                defaultProfileImage,
               ],
               (err, userResult) => {
                 if (err) {
@@ -338,6 +380,8 @@ export const invitedRegisterUser = (req, res) => {
     return res.json({ message: "All fields are required." });
   }
 
+  const defaultProfileImage = path.join("/uploads", "face1.jpg");
+
   // Check if email exists in User or Auth tables
   db.query(
     "SELECT email FROM user WHERE email = ?",
@@ -376,7 +420,7 @@ export const invitedRegisterUser = (req, res) => {
 
             // Insert into User table
             db.query(
-              "INSERT INTO user (first_name, email, phone_no, password, qualification, profession, has_paid) VALUES (?, ?, ?, ?,?,?,?)",
+              "INSERT INTO user (first_name, email, phone_no, password, qualification, profession, has_paid,profile_image) VALUES (?, ?, ?, ?,?,?,?,?)",
               [
                 fullname,
                 email,
@@ -385,6 +429,7 @@ export const invitedRegisterUser = (req, res) => {
                 qualification,
                 jobStatus,
                 1,
+                defaultProfileImage,
               ],
               (err, userResult) => {
                 if (err) {

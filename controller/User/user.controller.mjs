@@ -13,10 +13,11 @@ export const getUserById = (req, res) => {
 
   // SQL query to fetch user details by ID and quiz_attempt for assessment_type = 2
   const query = `
-      SELECT u.first_name,u.profile_image,u.password,u.phone_no,u.profession, u.last_name, u.email, u.user_id, q.moduleid, q.assessment_type, q.score
+      SELECT u.first_name, u.profile_image, u.password, u.phone_no, u.profession, u.last_name, u.email, u.user_id, 
+             q.moduleid, q.assessment_type, q.score
       FROM user u
-      LEFT JOIN quiz_attempt q ON u.user_id = q.user_id
-      WHERE u.user_id = ? AND q.assessment_type = 2
+      LEFT JOIN quiz_attempt q ON u.user_id = q.user_id AND q.assessment_type = 2
+      WHERE u.user_id = ?
     `;
 
   db.query(query, [id], (err, result) => {
@@ -25,10 +26,8 @@ export const getUserById = (req, res) => {
       return res.status(500).json({ message: "Internal server error" });
     }
 
-    if (result.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "User not found or no completed modules" });
+    if (result.length === 0 || !result[0].user_id) {
+      return res.status(404).json({ message: "User not found" });
     }
 
     // Define a structure for 18 modules with completed status set to false initially
@@ -40,13 +39,16 @@ export const getUserById = (req, res) => {
 
     // Update the modules array based on quiz_attempt data (marking completed if score >= 50)
     result.forEach((attempt) => {
-      const moduleIndex = attempt.moduleid - 1; // Module IDs start from 1, array indices from 0
-      if (
-        attempt.score >= 50 &&
-        moduleIndex >= 0 &&
-        moduleIndex < modules.length
-      ) {
-        modules[moduleIndex].completed = true;
+      if (attempt.moduleid) {
+        // Ensure there is a quiz attempt
+        const moduleIndex = attempt.moduleid - 1; // Module IDs start from 1, array indices from 0
+        if (
+          attempt.score >= 50 &&
+          moduleIndex >= 0 &&
+          moduleIndex < modules.length
+        ) {
+          modules[moduleIndex].completed = true;
+        }
       }
     });
 
@@ -57,7 +59,6 @@ export const getUserById = (req, res) => {
     const completionPercentage = (completedModules / 18) * 100;
 
     // Send back the user details, modules, and completion percentage
-    // const profile_image = ;
     res.json({
       first_name: result[0].first_name,
       last_name: result[0].last_name,
@@ -80,7 +81,7 @@ export const updateUserProfile = (req, res) => {
   // Handle image upload, use a default if no file is uploaded
   const profile_image = req.file
     ? path.join("/uploads", req.file.filename)
-    : "default_image.jpg";
+    : "face1.jpg";
 
   const fieldsToUpdate = {};
 
@@ -309,10 +310,12 @@ export const composeMessage = (req, res) => {
     const senderName = userResult[0].first_name; // Get the first name
 
     // Split the email variable by commas to handle multiple user IDs
-    const userIds = email.split(',').map((id) => id.trim());
+    const userIds = email.split(",").map((id) => id.trim());
 
     // Fetch the email addresses for the provided user IDs
-    const emailQuery = `SELECT email FROM user WHERE user_id IN (${userIds.join(',')})`;
+    const emailQuery = `SELECT email FROM user WHERE user_id IN (${userIds.join(
+      ","
+    )})`;
     db.query(emailQuery, (emailErr, emailResult) => {
       if (emailErr) {
         console.error("Error fetching recipient emails:", emailErr);

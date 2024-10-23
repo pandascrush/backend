@@ -883,7 +883,7 @@ export const paymentWebhook = async (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, NOW(), 'completed');
       `;
 
-      con.query(
+      db.query(
         insertDetailsQuery,
         [
           data.id,
@@ -906,10 +906,10 @@ export const paymentWebhook = async (req, res) => {
       const updateLicenseQuery = `
         UPDATE license 
         SET license = license + ? 
-        WHERE company_id = (SELECT business_id FROM business_register WHERE spoc_email_id = ?);
+        WHERE company_id = (SELECT company_id FROM business_register WHERE spoc_email_id = ?);
       `;
 
-      con.query(
+      db.query(
         updateLicenseQuery,
         [item.quantity, data.customer_details.email],
         (error, result) => {
