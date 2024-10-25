@@ -544,7 +544,7 @@ export const getSpocNameByCompanyId = (req, res) => {
   const { company_id } = req.params; // Extract company_id from the request parameters
 
   // SQL query to get the spoc_name from the business_register table
-  const query = "SELECT spoc_name FROM business_register WHERE company_id = ?";
+  const query = "SELECT spoc_name,company_email_id FROM business_register WHERE company_id = ?";
 
   // Execute the query
   db.query(query, [company_id], (err, result) => {
@@ -560,7 +560,7 @@ export const getSpocNameByCompanyId = (req, res) => {
     }
 
     // Return the spoc_name
-    res.json({ spoc_name: result[0].spoc_name });
+    res.json({ spoc_name: result[0].spoc_name,company_email:result[0].company_email_id });
   });
 };
 

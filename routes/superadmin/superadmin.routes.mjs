@@ -1,11 +1,13 @@
 import express from "express";
 import {
   activeUsersData,
+  activeUsersForSeperation,
   checkApproved,
   checkUpdate,
   companyDetails,
   getCheck,
   getCompanyCount,
+  getEnrollmentCountForCompanyAndSelf,
   getNeft,
   getSubscribedUserCount,
   monthlyProgressData,
@@ -31,5 +33,8 @@ router.get("/revenuedata", revenueData);
 router.get("/companydetails", companyDetails);
 router.get("/subscribersdata", subscribersData);
 router.get("/activeusersdata", activeUsersData);
+
+router.get("/enrollmentcountcomandself", getEnrollmentCountForCompanyAndSelf);
+router.get("/activeforseperate",activeUsersForSeperation)
 
 export default router;

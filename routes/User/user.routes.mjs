@@ -10,7 +10,7 @@ router.get('/userworkhour/:id',getUserWorkHours)
 router.get("/assessment-logs/:user_id",getUserAssessmentLogs)
 router.get('/paymentstatus/:id',checkUserPaymentStatus)
 router.post('/composemessage',composeMessage)
-router.get('/getallmsg',getAllMessage)
+router.get('/getallmsg/:id',getAllMessage)
 router.post('/updateprofile/:id',upload.single("profile_image"),updateUserProfile)
 router.get('/payverify/:id',userPaymentVerification)
 

@@ -426,3 +426,168 @@ export const activeUsersData = (req, res) => {
     checkUserDetails(0);
   });
 };
+
+export const getEnrollmentCountForCompanyAndSelf = (req, res) => {
+  const query = `
+    SELECT 
+      COUNT(CASE WHEN company_id IS NOT NULL THEN 1 END) AS company_enrollment_count,
+      COUNT(CASE WHEN company_id IS NULL THEN 1 END) AS self_enrollment_count
+    FROM user_enrollment;
+  `;
+
+  db.query(query, (error, results) => {
+    if (error) {
+      console.error("Error fetching enrollment counts:", error);
+      return res.status(500).json({ error: "Database query failed" });
+    }
+
+    res.json({
+      company_enrollment_count: results[0].company_enrollment_count,
+      self_enrollment_count: results[0].self_enrollment_count,
+    });
+  });
+};
+
+export const activeUsersForSeperation = (req, res) => {
+  const totalModules = 18; // Total number of modules
+
+  // Step 1: Query to get user details and enrollment information
+  const getUsersQuery = `
+      SELECT u.first_name, ue.user_id, ue.time_created AS enrollment_date, ue.company_id
+      FROM user_enrollment ue
+      JOIN user u ON ue.user_id = u.user_id;
+    `;
+
+  db.query(getUsersQuery, (error, users) => {
+    if (error) {
+      console.error("Error fetching users:", error);
+      return res.status(500).json({ message: "Error fetching users." });
+    }
+
+    const results = [];
+    let companyActiveUsersCount = 0;
+    let selfActiveUsersCount = 0;
+
+    // Step 2: Check quiz attempts and login/logout activity for each user
+    const checkUserDetails = (index) => {
+      if (index >= users.length) {
+        // After processing all users, return the result along with active users counts
+        return res.json({
+          results,
+          company_active_users: companyActiveUsersCount,
+          self_active_users: selfActiveUsersCount,
+        });
+      }
+
+      const user = users[index];
+      const userId = user.user_id;
+
+      // Query to check if the user has any login events
+      const checkActivityQuery = `
+          SELECT time_created, eventname
+          FROM standardlog
+          WHERE user_id = ? AND eventname = 'login'
+          ORDER BY time_created ASC;
+        `;
+
+      db.query(checkActivityQuery, [userId], (err, logResults) => {
+        if (err) {
+          console.error("Error fetching login/logout activity:", err);
+          return res.status(500).json({ message: "Error fetching activity." });
+        }
+
+        // If the user has no login events, mark them as inactive
+        if (logResults.length === 0) {
+          return checkUserDetails(index + 1);
+        }
+
+        // Check for inactivity (5 consecutive days of inactivity)
+        const checkInactivityQuery = `
+            SELECT time_created, eventname
+            FROM standardlog
+            WHERE user_id = ?
+            ORDER BY time_created DESC;
+          `;
+
+        db.query(checkInactivityQuery, [userId], (error, activityResults) => {
+          if (error) {
+            console.error("Error fetching activity logs:", error);
+            return res
+              .status(500)
+              .json({ message: "Error fetching activity logs." });
+          }
+
+          let inactive = false;
+          let lastActiveDate = null;
+          let consecutiveInactiveDays = 0;
+
+          activityResults.forEach((log) => {
+            const logDate = new Date(log.time_created);
+
+            if (
+              lastActiveDate &&
+              (lastActiveDate - logDate) / (1000 * 60 * 60 * 24) >= 1
+            ) {
+              consecutiveInactiveDays++;
+            } else {
+              consecutiveInactiveDays = 0;
+            }
+
+            if (consecutiveInactiveDays >= 5) {
+              inactive = true;
+            }
+
+            lastActiveDate = logDate;
+          });
+
+          if (inactive) {
+            return checkUserDetails(index + 1);
+          }
+
+          // Query to get completed modules from quiz_attempt with assessment_type = 2
+          const quizAttemptQuery = `
+              SELECT moduleid
+              FROM quiz_attempt
+              WHERE user_id = ? AND assessment_type = 2
+              GROUP BY moduleid;
+            `;
+
+          db.query(quizAttemptQuery, [userId], (error, quizResults) => {
+            if (error) {
+              console.error("Error fetching quiz attempts:", error);
+              return res
+                .status(500)
+                .json({ message: "Error fetching quiz attempts." });
+            }
+
+            // Calculate completed modules and completion percentage
+            const completedModules = quizResults.length;
+            const completionPercentage =
+              (completedModules / totalModules) * 100;
+
+            // Store result for the active user
+            results.push({
+              first_name: user.first_name,
+              enrollment_date: user.enrollment_date,
+              completed_modules: completedModules,
+              completion_percentage: completionPercentage.toFixed(2),
+            });
+
+            // Increment the appropriate active user count
+            if (user.company_id) {
+              companyActiveUsersCount++;
+            } else {
+              selfActiveUsersCount++;
+            }
+
+            // Process the next user
+            checkUserDetails(index + 1);
+          });
+        });
+      });
+    };
+
+    // Start processing users from the first user
+    checkUserDetails(0);
+  });
+};

@@ -289,6 +289,7 @@ export const getAllUsers = (req, res) => {
 
 export const composeMessage = (req, res) => {
   const { email, subject, message, user_id } = req.body;
+  console.log("email", email);
 
   // Validate the input
   if (!email || !subject || !message || !user_id) {
@@ -313,7 +314,7 @@ export const composeMessage = (req, res) => {
     const userIds = email.split(",").map((id) => id.trim());
 
     // Fetch the email addresses for the provided user IDs
-    const emailQuery = `SELECT email FROM user WHERE user_id IN (${userIds.join(
+    const emailQuery = `SELECT email FROM auth WHERE role_id IN (${userIds.join(
       ","
     )})`;
     db.query(emailQuery, (emailErr, emailResult) => {
@@ -328,6 +329,7 @@ export const composeMessage = (req, res) => {
 
       // Prepare the list of emails to send messages to
       const emailList = emailResult.map((row) => row.email);
+      console.log("emaillist", emailList);
 
       // Prepare to store any email sending/storing errors
       let emailErrors = [];
@@ -389,12 +391,15 @@ export const composeMessage = (req, res) => {
 };
 
 export const getAllMessage = (req, res) => {
-  const sql = `select * from user_msg_compose`;
+  const { id } = req.params;
+  console.log(id);
+  const sql = `select * from user_msg_compose where user_id =?`;
 
-  db.query(sql, (err, result) => {
+  db.query(sql, [id], (err, result) => {
     if (err) {
       res.json({ err: err });
     } else {
+      console.log(result);
       res.json({ msg: result });
     }
   });

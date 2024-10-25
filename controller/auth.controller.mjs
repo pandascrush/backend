@@ -23,145 +23,192 @@ export const registerBusiness = async (req, res) => {
   const saltRounds = 10;
 
   try {
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const domain = company_email_id.split("@")[1]; // Extract domain from email
 
-    // Start transaction
-    db.beginTransaction((err) => {
-      if (err) {
-        return res.json({ message: "Error starting database transaction" });
-      }
+    // Query to check if any company with the same domain already exists
+    const checkDomainQuery = `SELECT company_email_id FROM business_register WHERE company_email_id LIKE ?`;
+    db.query(
+      checkDomainQuery,
+      [`%${domain}`],
+      async (err, existingCompanies) => {
+        if (err) {
+          console.error("Error checking company domain:", err);
+          return res.json({ message: "Error checking company domain." });
+        }
 
-      // Insert the business information into the business_register table
-      const insertBusinessQuery = `
-        INSERT INTO business_register 
-        (company_name, company_email_id, country, zipcode, company_phone_number, spoc_name, spoc_email_id, spoc_phone_number, company_size, company_type, password)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        // If any company with the same domain exists, return an error
+        if (existingCompanies.length > 0) {
+          return res.json({
+            message: "Company email domain is already registered.",
+          });
+        }
 
-      db.query(
-        insertBusinessQuery,
-        [
-          company_name,
-          company_email_id,
-          country,
-          zipcode,
-          company_phone_number,
-          spoc_name,
-          spoc_email_id,
-          spoc_phone_number,
-          company_size,
-          company_type,
-          hashedPassword, // Store hashed password
-        ],
-        (err, result) => {
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        // Start transaction
+        db.beginTransaction((err) => {
           if (err) {
-            return db.rollback(() => {
-              console.error(err);
-              res.json({ message: "Error registering business" });
-            });
+            return res.json({ message: "Error starting database transaction" });
           }
 
-          const companyId = result.insertId; // Get the inserted company_id
+          // Insert the business information into the business_register table
+          const insertBusinessQuery = `
+          INSERT INTO business_register 
+          (company_name, company_email_id, country, zipcode, company_phone_number, spoc_name, spoc_email_id, spoc_phone_number, company_size, company_type, password)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-          // Now insert into the auth table for the SPOC
-          const insertAuthQuery = `INSERT INTO auth (company_id, email, password, role_id) VALUES (?, ?, ?, ?)`;
           db.query(
-            insertAuthQuery,
-            [companyId, spoc_email_id, hashedPassword, 5], // role_id is 5 for SPOC
-            (err, authResult) => {
+            insertBusinessQuery,
+            [
+              company_name,
+              company_email_id,
+              country,
+              zipcode,
+              company_phone_number,
+              spoc_name,
+              spoc_email_id,
+              spoc_phone_number,
+              company_size,
+              company_type,
+              hashedPassword, // Store hashed password
+            ],
+            (err, result) => {
               if (err) {
                 return db.rollback(() => {
                   console.error(err);
-                  res.json({ message: "Error registering SPOC in auth table" });
+                  res.json({ message: "Error registering business" });
                 });
               }
 
-              // Insert into the license table
-              const insertLicenseQuery = `INSERT INTO license (company_id, license, invite, enrolled) VALUES (?, ?, ?, ?)`;
+              const companyId = result.insertId; // Get the inserted company_id
+
+              // Now insert into the auth table for the SPOC
+              const insertAuthQuery = `INSERT INTO auth (company_id, email, password, role_id) VALUES (?, ?, ?, ?)`;
               db.query(
-                insertLicenseQuery,
-                [companyId, 0, 0, 0], // Set license, invite, and enrolled to 0
-                (err, licenseResult) => {
+                insertAuthQuery,
+                [companyId, spoc_email_id, hashedPassword, 5], // role_id is 5 for SPOC
+                (err, authResult) => {
                   if (err) {
                     return db.rollback(() => {
                       console.error(err);
                       res.json({
-                        message: "Error inserting into license table",
+                        message: "Error registering SPOC in auth table",
                       });
                     });
                   }
 
-                  // Insert into the context table after inserting into auth
-                  const insertContextQuery = `INSERT INTO context (contextlevel, instanceid) VALUES (?, ?)`;
+                  // Insert into the license table
+                  const insertLicenseQuery = `INSERT INTO license (company_id, license, invite, enrolled) VALUES (?, ?, ?, ?)`;
                   db.query(
-                    insertContextQuery,
-                    [7, companyId], // contextlevel = 7, instanceid = companyId
-                    (err, contextResult) => {
+                    insertLicenseQuery,
+                    [companyId, 0, 0, 0], // Set license, invite, and enrolled to 0
+                    (err, licenseResult) => {
                       if (err) {
                         return db.rollback(() => {
                           console.error(err);
                           res.json({
-                            message: "Error inserting into context table",
+                            message: "Error inserting into license table",
                           });
                         });
                       }
 
-                      const contextId = contextResult.insertId; // Get the inserted context_id
-
-                      // Update the business_register table with the context_id
-                      const updateBusinessQuery = `UPDATE business_register SET context_id = ? WHERE company_id = ?`;
+                      // Insert into the context table after inserting into auth
+                      const insertContextQuery = `INSERT INTO context (contextlevel, instanceid) VALUES (?, ?)`;
                       db.query(
-                        updateBusinessQuery,
-                        [contextId, companyId],
-                        (err, updateResult) => {
+                        insertContextQuery,
+                        [7, companyId], // contextlevel = 7, instanceid = companyId
+                        (err, contextResult) => {
                           if (err) {
                             return db.rollback(() => {
                               console.error(err);
                               res.json({
-                                message:
-                                  "Error updating business_register with context_id",
+                                message: "Error inserting into context table",
                               });
                             });
                           }
 
-                          // Commit the transaction if all inserts succeed
-                          db.commit(async (err) => {
-                            if (err) {
-                              return db.rollback(() => {
-                                console.error(err);
+                          const contextId = contextResult.insertId; // Get the inserted context_id
+
+                          // Update the business_register table with the context_id
+                          const updateBusinessQuery = `UPDATE business_register SET context_id = ? WHERE company_id = ?`;
+                          db.query(
+                            updateBusinessQuery,
+                            [contextId, companyId],
+                            (err, updateResult) => {
+                              if (err) {
+                                return db.rollback(() => {
+                                  console.error(err);
+                                  res.json({
+                                    message:
+                                      "Error updating business_register with context_id",
+                                  });
+                                });
+                              }
+
+                              // Commit the transaction if all inserts succeed
+                              db.commit(async (err) => {
+                                if (err) {
+                                  return db.rollback(() => {
+                                    console.error(err);
+                                    res.json({
+                                      message: "Error committing transaction",
+                                    });
+                                  });
+                                }
+
+                                // Send confirmation email to SPOC
+                                const mailData = {
+                                  from: "sivaranji5670@gmail.com",
+                                  to: spoc_email_id,
+                                  subject:
+                                    "Welcome to [Your Company Name] - Account Registration Successful",
+                                  text: `Dear ${spoc_name}, Your registration was successful. Username: ${spoc_email_id}, Password: ${password}`,
+                                  html: `
+                                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                                    <h2 style="text-align: center; color: #4CAF50;">Welcome to [Your Company Name]!</h2>
+                                    <p>Dear ${spoc_name},</p>
+                                    <p>Thank you for registering your company with us. Below are your account details:</p>
+                                    
+                                    <div style="padding: 15px; border: 1px solid #f1f1f1; border-radius: 8px; margin-top: 10px; background-color: #f9f9f9;">
+                                      <p><strong>Username:</strong> ${spoc_email_id}</p>
+                                      <p><strong>Password:</strong> ${password}</p>
+                                      <p><strong>Login URL:</strong> <a href="${process.env.DOMAIN}" style="color: #4CAF50;">https://yourwebsite.com/login</a></p>
+                                    </div>
+                                    
+                                    <p style="margin-top: 20px;">To get started, simply log in using the link above and begin exploring our features!</p>
+                                
+                                    <div style="border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px;">
+                                      <p style="font-size: 12px; color: #777;">If you did not register for this account, please ignore this email or contact our support team at support@yourwebsite.com.</p>
+                                      <p style="font-size: 12px; color: #777;">Best Regards,<br>[Your Company Name] Team</p>
+                                    </div>
+                                  </div>
+                                  `,
+                                };
+
+                                // Send email
+                                transporter.sendMail(
+                                  mailData,
+                                  (error, info) => {
+                                    if (error) {
+                                      console.error(
+                                        "Error sending email:",
+                                        error
+                                      );
+                                    } else {
+                                      console.log("Email sent:", info.response);
+                                    }
+                                  }
+                                );
+
                                 res.json({
-                                  message: "Error committing transaction",
+                                  message: "Business registered successfully",
+                                  business_id: companyId,
+                                  spoc_id: authResult.insertId,
+                                  context_id: contextId,
                                 });
                               });
                             }
-
-                            // Send confirmation email to SPOC
-                            const mailData = {
-                              from: "sivaranji5670@gmail.com",
-                              to: spoc_email_id,
-                              subject: "New User Confirmation",
-                              text: "mail sending by text format",
-                              html: `<b>Dear ${spoc_name},</b><br>
-                                     Please use the below URL for registration details <br>
-                                     UserName: ${spoc_email_id}<br>
-                                     Password: ${password}`,
-                            };
-
-                            // Send email
-                            transporter.sendMail(mailData, (error, info) => {
-                              if (error) {
-                                console.error("Error sending email:", error);
-                              } else {
-                                console.log("Email sent:", info.response);
-                              }
-                            });
-
-                            res.json({
-                              message: "Business registered successfully",
-                              business_id: companyId,
-                              spoc_id: authResult.insertId,
-                              context_id: contextId,
-                            });
-                          });
+                          );
                         }
                       );
                     }
@@ -170,9 +217,9 @@ export const registerBusiness = async (req, res) => {
               );
             }
           );
-        }
-      );
-    });
+        });
+      }
+    );
   } catch (error) {
     console.error("Error processing request:", error);
     res.status(500).json({ message: "Error processing registration" });
@@ -325,8 +372,30 @@ export const registerUser = (req, res) => {
                             const mailOptions = {
                               from: "sivaranji5670@gmail.com",
                               to: email,
-                              subject: "Welcome to LMS",
-                              text: `Hello ${fullname},\n\nThank you for registering with our LMS platform!\n\nBest Regards,\nLMS Team`,
+                              subject: "Welcome to LMS - Dr Ken Spine Coach",
+                              text: `Hello ${fullname}, Thank you for registering with our LMS platform for the course "Dr Ken Spine Coach". We’re excited to have you with us! Best Regards, LMS Team`,
+                              html: `
+                                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                                  <h2 style="text-align: center; color: #4CAF50;">Welcome to Dr Ken Spine Coach!</h2>
+                                  
+                                  <p>Hello ${fullname},</p>
+                                  <p>Thank you for joining us at the LMS platform! We’re thrilled to have you on board for the <strong>Dr Ken Spine Coach</strong> course.</p>
+                            
+                                  <div style="padding: 15px; border: 1px solid #f1f1f1; border-radius: 8px; margin-top: 10px; background-color: #f9f9f9;">
+                                    <h3 style="color: #4CAF50; margin-bottom: 10px;">Getting Started</h3>
+                                    <p style="margin: 0;">To begin your journey, please log in and explore your course materials:</p>
+                                    <p style="margin: 0;"><a href="${process.env.DOMAIN}" style="color: #4CAF50; font-weight: bold;">Go to LMS Login</a></p>
+                                  </div>
+                            
+                                  <p style="margin-top: 20px;">Once logged in, you’ll have access to all the resources and support you need to excel in the course.</p>
+                                  
+                                  <p>If you have any questions or need assistance, feel free to reach out to our support team at <a href="mailto:support@yourwebsite.com" style="color: #4CAF50;">support@yourwebsite.com</a>.</p>
+                            
+                                  <div style="border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px;">
+                                    <p style="font-size: 12px; color: #777;">Best Regards,<br>LMS Team</p>
+                                  </div>
+                                </div>
+                              `,
                             };
 
                             transporter.sendMail(mailOptions, (error) => {
@@ -551,8 +620,31 @@ export const invitedRegisterUser = (req, res) => {
                                 const mailOptions = {
                                   from: "sivaranji5670@gmail.com",
                                   to: email,
-                                  subject: "Welcome to LMS",
-                                  text: `Hello ${fullname},\n\nThank you for registering with our LMS platform!\n\nBest Regards,\nLMS Team`,
+                                  subject:
+                                    "Welcome to LMS - Dr Ken Spine Coach",
+                                  text: `Hello ${fullname}, Thank you for registering with our LMS platform for the course "Dr Ken Spine Coach". We’re excited to have you with us! Best Regards, LMS Team`,
+                                  html: `
+                                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                                      <h2 style="text-align: center; color: #4CAF50;">Welcome to Dr Ken Spine Coach!</h2>
+                                      
+                                      <p>Hello ${fullname},</p>
+                                      <p>Thank you for joining us at the LMS platform! We’re thrilled to have you on board for the <strong>Dr Ken Spine Coach</strong> course.</p>
+                                
+                                      <div style="padding: 15px; border: 1px solid #f1f1f1; border-radius: 8px; margin-top: 10px; background-color: #f9f9f9;">
+                                        <h3 style="color: #4CAF50; margin-bottom: 10px;">Getting Started</h3>
+                                        <p style="margin: 0;">To begin your journey, please log in and explore your course materials:</p>
+                                        <p style="margin: 0;"><a href="${process.env.DOMAIN}" style="color: #4CAF50; font-weight: bold;">Go to LMS Login</a></p>
+                                      </div>
+                                
+                                      <p style="margin-top: 20px;">Once logged in, you’ll have access to all the resources and support you need to excel in the course.</p>
+                                      
+                                      <p>If you have any questions or need assistance, feel free to reach out to our support team at <a href="mailto:support@yourwebsite.com" style="color: #4CAF50;">support@yourwebsite.com</a>.</p>
+                                
+                                      <div style="border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px;">
+                                        <p style="font-size: 12px; color: #777;">Best Regards,<br>LMS Team</p>
+                                      </div>
+                                    </div>
+                                  `,
                                 };
 
                                 transporter.sendMail(mailOptions, (error) => {
