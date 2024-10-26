@@ -340,8 +340,23 @@ export const composeMessage = (req, res) => {
         const mailOptions = {
           from: "sivaranji5670@gmail.com", // Your sender email
           to: recipientEmail,
-          subject: subject,
-          text: message,
+          subject: `Support Query: ${subject}`, // Subject with a support prefix
+          html: `
+            <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+              <header style="text-align: center; padding: 10px 0;">
+                <h2 style="color: #0056b3;">Support Team - Dr Ken Spin Coach</h2>
+              </header>
+              
+              <p>Thank you for reaching out to us. We have received your query and our support team will respond to you as soon as possible.</p>
+              
+              <h3 style="color: #333;">Your Query:</h3>
+              <p style="background-color: #f9f9f9; padding: 10px; border-left: 4px solid #0056b3; color: #555;">
+                ${message}
+              </p>
+        
+              <p>If you have additional information to share, please reply directly to this email, and our team will include it in your support case.</p>
+            </div>
+          `,
         };
 
         // Send the email

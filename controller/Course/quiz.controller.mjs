@@ -630,38 +630,26 @@ export const fetchQuizQuestions = (req, res) => {
 
 export function saveQuizAttempt(req, res) {
   const { user_id, ass_id, module } = req.params;
-  const { result = [], match = [], desc = [], check = [] } = req.body; // Use 'check' for the new question type
-
-  console.log(user_id, ass_id, result, match, desc, check);
+  const { result = [], match = [], desc = [], check = [] } = req.body;
 
   // Calculate the total number of questions
   const totalQuestions =
     result.length + match.length + desc.length + check.length;
   console.log("Total Questions:", totalQuestions);
 
-  // Initialize scores
+  // Initialize correct answers count
   let correctAnswers = 0;
-  let descScore = 0;
 
-  // Step 1: Calculate the score for multiple-choice questions
+  // Step 1: Count correct answers for multiple-choice questions
   const correctAnswersMC = result.filter(
     (question) => question.correct === true
   ).length;
-  const mcScore =
-    result.length > 0
-      ? Math.round((correctAnswersMC / result.length) * 100)
-      : 0;
-  console.log("Multiple-Choice Score:", mcScore);
   correctAnswers += correctAnswersMC;
 
-  // Step 2: Calculate score for match questions
-  let matchScore = 0;
-  let correctMatchAnswers = 0;
-
+  // Step 2: Count correct answers for match questions
   const matchPromises = match.map((matchQuestion) => {
     return new Promise((resolve) => {
       let isMatchCorrect = true;
-
       const matchPromisesInner = matchQuestion.match_answers.map((answer) => {
         const queryGetCorrectAnswer = `
           SELECT option_text 
@@ -690,21 +678,14 @@ export function saveQuizAttempt(req, res) {
 
       Promise.all(matchPromisesInner).then(() => {
         if (isMatchCorrect) {
-          correctMatchAnswers++;
+          correctAnswers++;
         }
         resolve();
       });
     });
   });
 
-  const processMatchQuestions = Promise.all(matchPromises).then(() => {
-    matchScore =
-      match.length > 0
-        ? Math.round((correctMatchAnswers / match.length) * 100 * 0.25)
-        : 0;
-    console.log("Match Score:", matchScore);
-    correctAnswers += correctMatchAnswers;
-  });
+  const processMatchQuestions = Promise.all(matchPromises);
 
   // Step 3: Validate descriptive questions
   const descPromises = desc.map((descQuestion) => {
@@ -717,16 +698,9 @@ export function saveQuizAttempt(req, res) {
         }
 
         const keywords = result[0]?.option || [];
-        const userAnswer = descQuestion.user_answer;
-
-        console.log("Descriptive Question User Answer:", userAnswer);
-
-        const trimmedUserAnswer =
-          userAnswer && typeof userAnswer === "string"
-            ? userAnswer.trim().toLowerCase()
-            : "";
+        const userAnswer = descQuestion.user_answer.trim().toLowerCase();
         const isCorrect = keywords.some(
-          (option) => option.keyword.trim().toLowerCase() === trimmedUserAnswer
+          (option) => option.keyword.trim().toLowerCase() === userAnswer
         );
 
         resolve(isCorrect ? 1 : 0);
@@ -740,8 +714,6 @@ export function saveQuizAttempt(req, res) {
         (total, score) => total + score,
         0
       );
-      descScore = correctDescAnswers;
-      console.log("Descriptive Score:", descScore);
       correctAnswers += correctDescAnswers;
     }
   );
@@ -750,41 +722,30 @@ export function saveQuizAttempt(req, res) {
   const checkPromises = check.map((checkQuestion) => {
     return new Promise((resolve) => {
       const queryCheckAnswer = "SELECT check_data FROM quiz_text WHERE id = ?";
-
       db.query(queryCheckAnswer, [checkQuestion.question_id], (err, result) => {
         if (err) {
           console.error("Error fetching check_data for check:", err);
-          return resolve(0); // Resolve with 0 if there's an error
+          return resolve(0);
         }
 
         let correctAnswerArray;
-
         try {
-          // Try to parse check_data as JSON
           correctAnswerArray = JSON.parse(result[0]?.check_data || "[]");
         } catch (e) {
-          // If parsing fails, treat it as a simple string
           correctAnswerArray = [result[0]?.check_data];
         }
 
-        // Flatten both arrays to compare values without structure mismatch
-        const flattenArray = (arr) => arr.flat(Infinity); // Flatten any nested arrays
-
+        const flattenArray = (arr) => arr.flat(Infinity);
         const flatCorrectAnswerArray = flattenArray(correctAnswerArray);
         const flatUserAnswerArray = flattenArray(checkQuestion.user_answers);
 
-        console.log("Correct:", flatCorrectAnswerArray);
-        console.log("User:", flatUserAnswerArray);
-
-        // Compare the user's answers with the correct answers
         const isCorrect =
-          Array.isArray(flatUserAnswerArray) &&
           flatUserAnswerArray.length === flatCorrectAnswerArray.length &&
           flatUserAnswerArray.every((answer) =>
             flatCorrectAnswerArray.includes(answer)
           );
 
-        resolve(isCorrect ? 1 : 0); // Resolve with 1 for correct, 0 for incorrect
+        resolve(isCorrect ? 1 : 0);
       });
     });
   });
@@ -795,7 +756,6 @@ export function saveQuizAttempt(req, res) {
         (total, score) => total + score,
         0
       );
-      console.log("Check Type Correct Answers:", correctCheckAnswers);
       correctAnswers += correctCheckAnswers;
     }
   );
@@ -807,29 +767,14 @@ export function saveQuizAttempt(req, res) {
     processCheckQuestions,
   ]).then(finalizeScoring);
 
-  // Step 5: Combine scores and return response
   function finalizeScoring() {
-    let totalScore = 0;
-    const typesCount = [
-      result.length > 0,
-      match.length > 0,
-      desc.length > 0,
-      check.length > 0,
-    ].filter(Boolean).length;
+    // Calculate the score as a percentage of total questions
+    const totalScore = Math.round((correctAnswers / totalQuestions) * 100);
 
-    if (typesCount === 1) {
-      totalScore = mcScore || matchScore || descScore || 0;
-    } else if (typesCount === 2) {
-      totalScore = Math.round((mcScore + matchScore + (descScore || 0)) / 2);
-    } else if (typesCount >= 3) {
-      totalScore = Math.round((mcScore + matchScore + descScore) / typesCount);
-    }
-
-    totalScore = isNaN(totalScore) ? 0 : totalScore;
     console.log("Total Score:", totalScore);
     console.log("Total Correct Answers:", correctAnswers);
 
-    // Step 6: Store the attempt and log the event
+    // Store attempt and log event
     const queryPreviousAttemptCount = `
       SELECT attempt_count
       FROM quiz_attempt
@@ -852,17 +797,41 @@ export function saveQuizAttempt(req, res) {
           newAttemptCount = dbRes[0].attempt_count + 1;
         }
 
+        const allResults = [
+          ...result.map((q) => ({
+            question_id: q.question_id,
+            user_answer: q.user_answer,
+            correct: q.correct,
+          })),
+          ...match.map((matchQuestion) => ({
+            question_id: matchQuestion.question_id,
+            user_answer: matchQuestion.match_answers.map((a) => a.user_answer), // Array of user answers
+            correct: matchQuestion.isCorrect, // Assuming isCorrect was calculated
+          })),
+          ...desc.map((descQuestion) => ({
+            question_id: descQuestion.question_id,
+            user_answer: descQuestion.user_answer,
+            correct: descQuestion.isCorrect, // Assuming isCorrect was calculated
+          })),
+          ...check.map((checkQuestion) => ({
+            question_id: checkQuestion.question_id,
+            user_answer: checkQuestion.user_answers, // Array of user answers
+            correct: checkQuestion.isCorrect, // Assuming isCorrect was calculated
+          })),
+        ];
+
+        // Insert allResults directly as a JSON string
         const queryInsertNewAttempt = `
-        INSERT INTO quiz_attempt 
-        (user_id, result, attempt_count, assessment_type, attempt_timestamp, score, moduleid, total_question, correct_question)
-        VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, ?)
-      `;
+          INSERT INTO quiz_attempt 
+          (user_id, result, attempt_count, assessment_type, attempt_timestamp, score, moduleid, total_question, correct_question)
+          VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, ?)
+        `;
 
         db.query(
           queryInsertNewAttempt,
           [
             user_id,
-            JSON.stringify(result),
+            JSON.stringify(allResults), // Store all results in the DB without titles
             newAttemptCount,
             ass_id,
             totalScore,
@@ -879,9 +848,9 @@ export function saveQuizAttempt(req, res) {
             let eventName = ass_id == 1 ? "Pre-Assessment" : "Post-Assessment";
             const action = `${eventName} completed for module ${module}`;
             const queryInsertLog = `
-          INSERT INTO standardlog (user_id, eventname, action)
-          VALUES (?, ?, ?)
-        `;
+              INSERT INTO standardlog (user_id, eventname, action)
+              VALUES (?, ?, ?)
+            `;
 
             db.query(queryInsertLog, [user_id, eventName, action], (logErr) => {
               if (logErr) {
@@ -892,10 +861,10 @@ export function saveQuizAttempt(req, res) {
               }
 
               const queryRetrieveAllAttempts = `
-            SELECT total_question, correct_question, score, attempt_count, attempt_timestamp 
-            FROM quiz_attempt
-            WHERE user_id = ? AND assessment_type = ? AND moduleid = ?
-          `;
+                SELECT total_question, correct_question, score, attempt_count, attempt_timestamp,result 
+                FROM quiz_attempt
+                WHERE user_id = ? AND assessment_type = ? AND moduleid = ?
+              `;
 
               db.query(
                 queryRetrieveAllAttempts,
@@ -923,3 +892,102 @@ export function saveQuizAttempt(req, res) {
     );
   }
 }
+
+export const getQuestionsWithAnswers = (req, res) => {
+  const { courseid, moduleid } = req.params;
+  console.log(courseid, moduleid);
+
+  // Step 1: Get all questions for the specified courseid and moduleid
+  const quizQuery = `
+    SELECT * FROM quiz_text
+    WHERE courseid = ? AND moduleid = ?
+  `;
+
+  db.query(quizQuery, [courseid, moduleid], (err, questions) => {
+    if (err) {
+      return res.status(500).json({ error: "Error fetching questions" });
+    }
+
+    if (questions.length === 0) {
+      return res.json({ questions: [] });
+    }
+
+    // Step 2: Separate match type questions to fetch subquestions and options
+    const matchQuestionIds = questions
+      .filter((q) => q.question_type === 'match')
+      .map((q) => q.id);
+
+    if (matchQuestionIds.length === 0) {
+      // No match questions, return all other questions
+      return res.json({ questions });
+    }
+
+    // Step 3: Fetch subquestions for match type questions
+    const subQuestionQuery = `
+      SELECT * FROM match_subquestions
+      WHERE quiz_text_id IN (?)
+    `;
+
+    db.query(subQuestionQuery, [matchQuestionIds], (err, subQuestions) => {
+      if (err) {
+        return res.status(500).json({ error: "Error fetching subquestions" });
+      }
+
+      // Step 4: Fetch options for each subquestion
+      const subQuestionIds = subQuestions.map((sq) => sq.id);
+      const optionsQuery = `
+        SELECT * FROM match_options
+        WHERE subquestion_id IN (?)
+      `;
+
+      db.query(optionsQuery, [subQuestionIds], (err, options) => {
+        if (err) {
+          return res.status(500).json({ error: "Error fetching options" });
+        }
+
+        // Step 5: Structure the response, including subquestions and options for "match" types
+        const result = questions.map((question) => {
+          if (question.question_type === 'match') {
+            // For match questions, add subquestions with options
+            const questionSubQuestions = subQuestions.filter(
+              (sq) => sq.quiz_text_id === question.id
+            );
+
+            const correctAnswers = questionSubQuestions.map((subQuestion) => {
+              const option = options.find(
+                (opt) => opt.subquestion_id === subQuestion.id
+              );
+              return {
+                subQuestionId: subQuestion.id,
+                correctAnswer: option ? option.option_text : null,
+              };
+            });
+
+            return {
+              question_id: question.id,
+              question_text: question.text,
+              question_type: question.question_type,
+              correct_answers: correctAnswers,
+              option:question.option,
+              check_data:question.check_data
+            };
+          } else {
+            // For other question types, return as is
+            return {
+              question_id: question.id,
+              question_text: question.text,
+              question_type: question.question_type,
+              correct_answer: question.correct_answer, // assuming correct_answer field for non-match types
+              option:question.option,
+              check_data:question.check_data
+            };
+          }
+        });
+
+        res.json({ questions: result });
+      });
+    });
+  });
+};
+
+

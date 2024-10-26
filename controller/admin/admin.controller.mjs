@@ -285,8 +285,8 @@ const sendEmail = (email, company_id) => {
     subject: "Welcome to Dr Ken Spine Coach",
     html: `
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto;">
-        <div style="background-color: #f8f8f8; padding: 20px; border-radius: 5px; text-align: center;">
-          <h1 style="color: #4CAF50;">Welcome to Dr Ken Spine Coach!</h1>
+        <div style="background-color: #001040; padding: 20px; border-radius: 5px; text-align: center;">
+          <h1 style="color: white;">Welcome to Dr Ken Spine Coach!</h1>
         </div>
         <div style="padding: 20px; background-color: white; border-radius: 5px;">
           <p>Dear Learner,</p>
@@ -299,16 +299,13 @@ const sendEmail = (email, company_id) => {
           </ol>
           <p style="margin: 20px 0;">
             <a href="${URL}" 
-               style="background-color: #4CAF50; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+               style="background-color: #001040; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
                Start Your Journey
             </a>
           </p>
           <p>We’re here to support you every step of the way. Best of luck as you begin the Dr Ken Spine Coach course!</p>
           <p style="margin-top: 20px;">Best regards,</p>
           <p><strong>The Dr Ken Spine Coach Team</strong></p>
-        </div>
-        <div style="padding: 20px; background-color: #f8f8f8; border-radius: 5px; text-align: center; font-size: 12px; color: #888;">
-          <p>This email was sent to ${email} because you enrolled in Dr Ken Spine Coach.</p>
         </div>
       </div>
     `,
@@ -578,8 +575,8 @@ export const remainderMail = (req, res) => {
     subject: "Reminder to Complete Your Enrollment - Dr Ken Spine Coach",
     html: `
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto;">
-        <div style="background-color: #f8f8f8; padding: 20px; border-radius: 5px; text-align: center;">
-          <h1 style="color: #4CAF50;">Don't Miss Out on Your Journey with Dr Ken Spine Coach!</h1>
+        <div style="background-color: #001040; padding: 20px; border-radius: 5px; text-align: center;">
+          <h1 style="color: white;">Don't Miss Out on Your Journey with Dr Ken Spine Coach!</h1>
         </div>
         <div style="padding: 20px; background-color: white; border-radius: 5px;">
           <p>Dear Learner,</p>
@@ -594,16 +591,13 @@ export const remainderMail = (req, res) => {
           
           <p style="margin: 20px 0;">
             <a href="${URL}" 
-               style="background-color: #4CAF50; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
+               style="background-color: #001040; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
                Complete Your Enrollment
             </a>
           </p>
           <p>We're excited to have you on board and are here to support you every step of the way.</p>
           <p style="margin-top: 20px;">Best regards,</p>
           <p><strong>The Dr Ken Spine Coach Team</strong></p>
-        </div>
-        <div style="padding: 20px; background-color: #f8f8f8; border-radius: 5px; text-align: center; font-size: 12px; color: #888;">
-          <p>This email was sent to ${email} because you signed up for Dr Ken Spine Coach.</p>
         </div>
       </div>
     `,
@@ -638,37 +632,67 @@ export const inactiveInvites = (req, res) => {
   var { company_id } = req.params;
   var { email } = req.body;
 
-  const Inactivemail = {
-    from: "sivaranji5670@gmail.com",
-    to: email,
-    subject: "Inactvie Enrollment",
-    text: "mail sending by text formate",
-    html: "<b>Dear Learners, </b><br>My Spain Coach course is Inactive",
-  };
-
-  transporter.sendMail(Inactivemail, (error, info) => {
-    if (error) {
-      return console.log(error);
-    } else {
-      // res.status(200).send({ message: "Mail send", message_id: info.messageId });
-
-      let updateremainder = "delete from invite_learners where email=?";
-      db.query(updateremainder, [email], (error, result) => {
-        if (error) {
-          console.log(error);
-        } else {
-          let updatequantityandinvite =
-            "update license set license=license + 1,invite=invite - 1 where company_id=?";
-          db.query(updatequantityandinvite, [company_id], (error, result) => {
-            if (error) {
-              console.log(error);
-            } else {
-              res.json({ status: "changed" });
-            }
-          });
-        }
-      });
+  // Query to get company_email_id from business_register
+  const getCompanyEmailQuery = "SELECT company_email_id FROM business_register WHERE company_id = ?";
+  
+  db.query(getCompanyEmailQuery, [company_id], (err, result) => {
+    if (err) {
+      console.log(err);
+      return res.status(500).json({ error: "Failed to fetch company email." });
     }
+    
+    // Ensure company_email_id is retrieved
+    const company_email_id = result[0]?.company_email_id;
+
+    const Inactivemail = {
+      from: "sivaranji5670@gmail.com",
+      to: email,
+      subject: "Inactive Enrollment Notification",
+      html: `
+        <div style="font-family: Arial, sans-serif; color: white; background-color: #001040; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto;">
+          <header style="text-align: center;">
+            <h2>Enrollment Status: Inactive</h2>
+          </header>
+          
+          <p>Dear Learner,</p>
+          
+          <p>We hope this message finds you well. This is to inform you that your enrollment for the <strong>My Spine Coach</strong> course has been marked as inactive.</p>
+          
+          <p>We previously sent five reminders regarding the pending actions required to maintain your enrollment status, but unfortunately, we did not receive a response. As a result, your access has now been suspended.</p>
+          
+          <p>If you wish to reactivate your enrollment or have any questions regarding your status, please contact our support team at <a href="mailto:${company_email_id}" style="color: #ffcc00;">${company_email_id}</a> or reply to this email.</p>
+
+          <p>Thank you for your understanding.</p>
+          
+          <p style="margin-top: 20px;">Best regards,<br>My Spine Coach Support Team</p>
+        </div>
+      `,
+    };
+
+    // Send the email
+    transporter.sendMail(Inactivemail, (error, info) => {
+      if (error) {
+        return console.log(error);
+      } else {
+        // Update the invite status and license quantities in the database
+        let updateremainder = "DELETE FROM invite_learners WHERE email = ?";
+        db.query(updateremainder, [email], (error, result) => {
+          if (error) {
+            console.log(error);
+          } else {
+            let updatequantityandinvite =
+              "UPDATE license SET license = license + 1, invite = invite - 1 WHERE company_id = ?";
+            db.query(updatequantityandinvite, [company_id], (error, result) => {
+              if (error) {
+                console.log(error);
+              } else {
+                res.json({ status: "changed" });
+              }
+            });
+          }
+        });
+      }
+    });
   });
 };
 

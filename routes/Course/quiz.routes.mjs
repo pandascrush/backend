@@ -6,6 +6,7 @@ import {
   getQuestion,
   getQuestionByModule,
   getQuestionsByModuleAndCourse,
+  getQuestionsWithAnswers,
   getQuizType,
   saveQuizAttempt,
   updateQuestionByModule,
@@ -23,5 +24,7 @@ router.get("/fetch/:courseId/:moduleId/:quizTypeId", fetchQuizQuestions);
 
 router.post("/createquiz", createQuiz);
 router.post("/savequiz/:user_id/:ass_id/:module", saveQuizAttempt);
+
+router.get("/getcorrectanswers/:courseid/:moduleid",getQuestionsWithAnswers)
 
 export default router;
