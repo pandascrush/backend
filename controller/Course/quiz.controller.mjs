@@ -33,16 +33,16 @@ export const addQuestion = (req, res) => {
       correct,
     } = req.body;
 
-    console.log(
-      content,
-      options,
-      selectedModuleId,
-      parentModuleId,
-      correctOption,
-      questionType,
-      keywords,
-      matches
-    );
+    // console.log(
+    //   content,
+    //   options,
+    //   selectedModuleId,
+    //   parentModuleId,
+    //   correctOption,
+    //   questionType,
+    //   keywords,
+    //   matches
+    // );
 
     let query;
     let queryParams;
@@ -276,6 +276,7 @@ export const updateQuestionByModule = (req, res) => {
       check_data,
       question_type,
       subQuestions,
+      feedback,
     } = questionData;
 
     // Since options is a JSON array, we can store it directly as a JSON field in the database
@@ -301,9 +302,12 @@ export const updateQuestionByModule = (req, res) => {
       sqlQuery = "UPDATE quiz_text SET text = ?, `option` = ? WHERE id = ?";
       queryParams = [text, optionsJson, questionId];
     } else if (question_type === "match") {
-      // For match type, update the text only in quiz_text
-      sqlQuery = "UPDATE quiz_text SET text = ? WHERE id = ?";
-      queryParams = [text, questionId];
+      // Convert feedback string to a JSON array with a feedback key
+      const feedbackJson = JSON.stringify([{ feedback }]);
+
+      // Update text and feedback fields in quiz_text table
+      sqlQuery = "UPDATE quiz_text SET text = ?, feedback = ? WHERE id = ?";
+      queryParams = [text, feedbackJson, questionId];
 
       // Execute the query to update quiz_text
       db.query(sqlQuery, queryParams, (err, result) => {
@@ -914,7 +918,7 @@ export const getQuestionsWithAnswers = (req, res) => {
 
     // Step 2: Separate match type questions to fetch subquestions and options
     const matchQuestionIds = questions
-      .filter((q) => q.question_type === 'match')
+      .filter((q) => q.question_type === "match")
       .map((q) => q.id);
 
     if (matchQuestionIds.length === 0) {
@@ -947,7 +951,7 @@ export const getQuestionsWithAnswers = (req, res) => {
 
         // Step 5: Structure the response, including subquestions and options for "match" types
         const result = questions.map((question) => {
-          if (question.question_type === 'match') {
+          if (question.question_type === "match") {
             // For match questions, add subquestions with options
             const questionSubQuestions = subQuestions.filter(
               (sq) => sq.quiz_text_id === question.id
@@ -968,8 +972,9 @@ export const getQuestionsWithAnswers = (req, res) => {
               question_text: question.text,
               question_type: question.question_type,
               correct_answers: correctAnswers,
-              option:question.option,
-              check_data:question.check_data
+              option: question.option,
+              check_data: question.check_data,
+              feedback:question.feedback
             };
           } else {
             // For other question types, return as is
@@ -978,8 +983,9 @@ export const getQuestionsWithAnswers = (req, res) => {
               question_text: question.text,
               question_type: question.question_type,
               correct_answer: question.correct_answer, // assuming correct_answer field for non-match types
-              option:question.option,
-              check_data:question.check_data
+              option: question.option,
+              check_data: question.check_data,
+              feedback:question.feedback
             };
           }
         });
@@ -989,5 +995,3 @@ export const getQuestionsWithAnswers = (req, res) => {
     });
   });
 };
-
-

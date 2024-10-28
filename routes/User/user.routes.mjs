@@ -1,5 +1,5 @@
 import express from "express";
-import { checkUserPaymentStatus, composeMessage, getAllMessage, getAllUsers, getUserAssessmentLogs, getUserById, getUserWorkHours, updateUserProfile, userPaymentVerification} from "../../controller/User/user.controller.mjs";
+import { checkUserPaymentStatus, composeMessage, getAllMessage, getAllUsers, getModuleCompletion, getUserAssessmentLogs, getUserById, getUserWorkHours, updateUserProfile, userPaymentVerification} from "../../controller/User/user.controller.mjs";
 import upload from "../../middleware/fileUpload.mjs";
 
 const router = express.Router();
@@ -13,5 +13,6 @@ router.post('/composemessage',composeMessage)
 router.get('/getallmsg/:id',getAllMessage)
 router.post('/updateprofile/:id',upload.single("profile_image"),updateUserProfile)
 router.get('/payverify/:id',userPaymentVerification)
+router.get("/grade/:userId",getModuleCompletion)
 
 export default router;

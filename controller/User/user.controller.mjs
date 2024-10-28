@@ -440,3 +440,41 @@ export const userPaymentVerification = (req, res) => {
     }
   });
 };
+
+export const getModuleCompletion = (req, res) => {
+  const userId = req.params.userId; // Get user_id from request parameters
+
+  const query = `
+    SELECT 
+        m.moduleid,
+        m.modulename,
+        MAX(CASE 
+            WHEN qa.assessment_type = 1 THEN 50
+            WHEN qa.assessment_type = 2 THEN 100
+            ELSE 0
+        END) AS completion_percentage
+    FROM 
+        quiz_attempt AS qa
+    JOIN 
+        modules AS m ON qa.moduleid = m.moduleid
+    WHERE 
+        qa.user_id = ?
+    GROUP BY 
+        m.moduleid, m.modulename
+    ORDER BY 
+        m.moduleid ASC;  -- Ordering by moduleid in ascending order
+  `;
+
+  db.query(query, [userId], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Database query failed' });
+    }
+
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'No modules found for this user' });
+    }
+
+    res.status(200).json(results);
+  });
+};
