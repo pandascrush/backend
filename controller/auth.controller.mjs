@@ -160,28 +160,27 @@ export const registerBusiness = async (req, res) => {
                                 const mailData = {
                                   from: "sivaranji5670@gmail.com",
                                   to: spoc_email_id,
-                                  subject:
-                                    "Welcome to [Your Company Name] - Account Registration Successful",
+                                  subject: "Account Registration Successful",
                                   text: `Dear ${spoc_name}, Your registration was successful. Username: ${spoc_email_id}, Password: ${password}`,
                                   html: `
-                                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-                                    <h2 style="text-align: center; color: #4CAF50;">Welcome to [Your Company Name]!</h2>
-                                    <p>Dear ${spoc_name},</p>
-                                    <p>Thank you for registering your company with us. Below are your account details:</p>
-                                    
-                                    <div style="padding: 15px; border: 1px solid #f1f1f1; border-radius: 8px; margin-top: 10px; background-color: #f9f9f9;">
-                                      <p><strong>Username:</strong> ${spoc_email_id}</p>
-                                      <p><strong>Password:</strong> ${password}</p>
-                                      <p><strong>Login URL:</strong> <a href="${process.env.DOMAIN}" style="color: #4CAF50;">https://yourwebsite.com/login</a></p>
+                                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #001040; border-radius: 10px; color: white;">
+                                      <h2 style="text-align: center; color: #4CAF50;">Welcome!</h2>
+                                      <p>Dear ${spoc_name},</p>
+                                      <p>Thank you for registering with us. Below are your account details:</p>
+                                      
+                                      <div style="padding: 15px; border: 1px solid #4CAF50; border-radius: 8px; margin-top: 10px; background-color: #001a66;">
+                                        <p><strong>Username:</strong> ${spoc_email_id}</p>
+                                        <p><strong>Password:</strong> ${password}</p>
+                                        <p><strong>Login URL:</strong> <a href="${process.env.DOMAIN}" style="color: #4CAF50; font-weight: bold;">https://yourwebsite.com/login</a></p>
+                                      </div>
+                                      
+                                      <p style="margin-top: 20px;">To get started, simply log in using the link above and begin exploring our features!</p>
+                                  
+                                      <div style="border-top: 1px solid #4CAF50; margin-top: 20px; padding-top: 10px;">
+                                        <p style="font-size: 12px; color: #ffffff;">If you did not register for this account, please ignore this email or contact our support team at support@yourwebsite.com.</p>
+                                        <p style="font-size: 12px; color: #ffffff;">Best Regards,<br>Support Team</p>
+                                      </div>
                                     </div>
-                                    
-                                    <p style="margin-top: 20px;">To get started, simply log in using the link above and begin exploring our features!</p>
-                                
-                                    <div style="border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px;">
-                                      <p style="font-size: 12px; color: #777;">If you did not register for this account, please ignore this email or contact our support team at support@yourwebsite.com.</p>
-                                      <p style="font-size: 12px; color: #777;">Best Regards,<br>[Your Company Name] Team</p>
-                                    </div>
-                                  </div>
                                   `,
                                 };
 
@@ -375,24 +374,24 @@ export const registerUser = (req, res) => {
                               subject: "Welcome to LMS - Dr Ken Spine Coach",
                               text: `Hello ${fullname}, Thank you for registering with our LMS platform for the course "Dr Ken Spine Coach". We’re excited to have you with us! Best Regards, LMS Team`,
                               html: `
-                                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-                                  <h2 style="text-align: center; color: #4CAF50;">Welcome to Dr Ken Spine Coach!</h2>
+                                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #001040; border-radius: 10px; color: white;">
+                                  <h2 style="text-align: center; color: white;">Welcome to Dr Ken Spine Coach!</h2>
                                   
                                   <p>Hello ${fullname},</p>
-                                  <p>Thank you for joining us at the LMS platform! We’re thrilled to have you on board for the <strong>Dr Ken Spine Coach</strong> course.</p>
+                                  <p>Thank you for joining us at the LMS platform! We’re thrilled to have you on board for the <strong style="color: white;">Dr Ken Spine Coach</strong> course.</p>
                             
-                                  <div style="padding: 15px; border: 1px solid #f1f1f1; border-radius: 8px; margin-top: 10px; background-color: #f9f9f9;">
+                                  <div style="padding: 15px; border: 1px solid #4CAF50; border-radius: 8px; margin-top: 10px; background-color: #001040;">
                                     <h3 style="color: #4CAF50; margin-bottom: 10px;">Getting Started</h3>
-                                    <p style="margin: 0;">To begin your journey, please log in and explore your course materials:</p>
+                                    <p style="margin: 0; color: white;">To begin your journey, please log in and explore your course materials:</p>
                                     <p style="margin: 0;"><a href="${process.env.DOMAIN}" style="color: #4CAF50; font-weight: bold;">Go to LMS Login</a></p>
                                   </div>
                             
-                                  <p style="margin-top: 20px;">Once logged in, you’ll have access to all the resources and support you need to excel in the course.</p>
+                                  <p style="margin-top: 20px; color: white;">Once logged in, you’ll have access to all the resources and support you need to excel in the course.</p>
                                   
-                                  <p>If you have any questions or need assistance, feel free to reach out to our support team at <a href="mailto:support@yourwebsite.com" style="color: #4CAF50;">support@yourwebsite.com</a>.</p>
+                                  <p style="color: white;">If you have any questions or need assistance, feel free to reach out to our support team at <a href="mailto:support@yourwebsite.com" style="color: #4CAF50;">support@yourwebsite.com</a>.</p>
                             
-                                  <div style="border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px;">
-                                    <p style="font-size: 12px; color: #777;">Best Regards,<br>LMS Team</p>
+                                  <div style="border-top: 1px solid #4CAF50; margin-top: 20px; padding-top: 10px;">
+                                    <p style="font-size: 12px; color: white;">Best Regards,<br>LMS Team</p>
                                   </div>
                                 </div>
                               `,
@@ -624,13 +623,13 @@ export const invitedRegisterUser = (req, res) => {
                                     "Welcome to LMS - Dr Ken Spine Coach",
                                   text: `Hello ${fullname}, Thank you for registering with our LMS platform for the course "Dr Ken Spine Coach". We’re excited to have you with us! Best Regards, LMS Team`,
                                   html: `
-                                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #001040; border-radius: 10px; color: white;">
                                       <h2 style="text-align: center; color: #4CAF50;">Welcome to Dr Ken Spine Coach!</h2>
                                       
                                       <p>Hello ${fullname},</p>
                                       <p>Thank you for joining us at the LMS platform! We’re thrilled to have you on board for the <strong>Dr Ken Spine Coach</strong> course.</p>
                                 
-                                      <div style="padding: 15px; border: 1px solid #f1f1f1; border-radius: 8px; margin-top: 10px; background-color: #f9f9f9;">
+                                      <div style="padding: 15px; border: 1px solid #4CAF50; border-radius: 8px; margin-top: 10px; background-color: #001a66;">
                                         <h3 style="color: #4CAF50; margin-bottom: 10px;">Getting Started</h3>
                                         <p style="margin: 0;">To begin your journey, please log in and explore your course materials:</p>
                                         <p style="margin: 0;"><a href="${process.env.DOMAIN}" style="color: #4CAF50; font-weight: bold;">Go to LMS Login</a></p>
@@ -638,10 +637,9 @@ export const invitedRegisterUser = (req, res) => {
                                 
                                       <p style="margin-top: 20px;">Once logged in, you’ll have access to all the resources and support you need to excel in the course.</p>
                                       
-                                      <p>If you have any questions or need assistance, feel free to reach out to our support team at <a href="mailto:support@yourwebsite.com" style="color: #4CAF50;">support@yourwebsite.com</a>.</p>
                                 
-                                      <div style="border-top: 1px solid #ddd; margin-top: 20px; padding-top: 10px;">
-                                        <p style="font-size: 12px; color: #777;">Best Regards,<br>LMS Team</p>
+                                      <div style="border-top: 1px solid #4CAF50; margin-top: 20px; padding-top: 10px;">
+                                        <p style="font-size: 12px; color: #ffffff;">Best Regards,<br>LMS Team</p>
                                       </div>
                                     </div>
                                   `,
