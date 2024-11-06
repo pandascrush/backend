@@ -31,18 +31,20 @@ export const addQuestion = (req, res) => {
       keywords, // For descriptive type
       matches, // For match-the-following pairs
       correct,
+      feedback,
     } = req.body;
 
-    // console.log(
-    //   content,
-    //   options,
-    //   selectedModuleId,
-    //   parentModuleId,
-    //   correctOption,
-    //   questionType,
-    //   keywords,
-    //   matches
-    // );
+    console.log(
+      content,
+      options,
+      selectedModuleId,
+      parentModuleId,
+      correctOption,
+      questionType,
+      keywords,
+      matches,
+      feedback
+    );
 
     let query;
     let queryParams;
@@ -92,8 +94,8 @@ export const addQuestion = (req, res) => {
     // Insert logic for match-the-following questions
     else if (questionType === "match_following") {
       query = `
-        INSERT INTO quiz_text (text, \`option\`, correct_answer, courseid, moduleid, question_type)
-        VALUES (?, ?, NULL, ?, ?, ?)
+        INSERT INTO quiz_text (text, \`option\`, correct_answer, courseid, moduleid, question_type,feedback)
+        VALUES (?, ?, NULL, ?, ?, ?,?)
       `;
       queryParams = [
         content,
@@ -101,6 +103,7 @@ export const addQuestion = (req, res) => {
         parentModuleId,
         selectedModuleId,
         "match",
+        feedback
       ];
     } else {
       return res.json({ error: "invalid_question_type" });
@@ -974,7 +977,7 @@ export const getQuestionsWithAnswers = (req, res) => {
               correct_answers: correctAnswers,
               option: question.option,
               check_data: question.check_data,
-              feedback:question.feedback
+              feedback: question.feedback,
             };
           } else {
             // For other question types, return as is
@@ -985,7 +988,7 @@ export const getQuestionsWithAnswers = (req, res) => {
               correct_answer: question.correct_answer, // assuming correct_answer field for non-match types
               option: question.option,
               check_data: question.check_data,
-              feedback:question.feedback
+              feedback: question.feedback,
             };
           }
         });

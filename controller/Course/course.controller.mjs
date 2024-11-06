@@ -96,11 +96,20 @@ export const getAllCourses = (req, res) => {
       c.course_start_date, 
       c.course_end_date, 
       c.created_at,
-      COUNT(m.moduleid) AS module_count
+      COUNT(DISTINCT m.moduleid) AS module_count,
+      COUNT(DISTINCT ue.user_id) AS enrolled_user_count,
+      (SELECT COUNT(DISTINCT ue2.user_id)
+       FROM user_enrollment AS ue2
+       JOIN quiz_attempt AS qa ON ue2.user_id = qa.user_id 
+       WHERE qa.assessment_type = 2 
+       GROUP BY ue2.user_id
+       HAVING COUNT(DISTINCT qa.moduleid) = 18) AS completed_user_count
     FROM 
       courses AS c
     LEFT JOIN 
       modules AS m ON c.courseid = m.courseid
+    LEFT JOIN 
+      user_enrollment AS ue ON 1 = 1 -- Joining all users to get enrolled count
     GROUP BY 
       c.courseid;
   `;
@@ -117,13 +126,15 @@ export const getAllCourses = (req, res) => {
 
     const courses = results.map((course) => ({
       courseid: course.courseid,
-      coursedesc: course.coursedesc,
+      coursedesc: course.course_desc,
       coursename: course.coursename,
       course_image: `${process.env.URL}${course.course_image}`,
       course_start_date: course.course_start_date,
       course_end_date: course.course_end_date,
       created_at: course.created_at,
-      module_count: course.module_count, // Count of modules
+      module_count: course.module_count,
+      enrolled_user_count: course.enrolled_user_count,
+      completed_user_count: course.completed_user_count // Users who completed all 18 modules
     }));
 
     res.json(courses);
@@ -351,6 +362,44 @@ export const updateModule = (req, res) => {
     }
 
     res.status(200).json({ message: "Module updated successfully" });
+  });
+};
+
+export const updateModuleImage = (req, res) => {
+  const { moduleid } = req.params;
+
+  // Get the uploaded file
+  const moduleImage = req.file;
+
+  // Generate the file path for storing in the database
+  const moduleImagePath = moduleImage ? path.join('/uploads', moduleImage.filename) : null;
+
+  if (!moduleImagePath) {
+    return res.json({ message: "Module image file is required" });
+  }
+
+  // SQL query to update the module image
+  const query = `
+    UPDATE modules 
+    SET module_image = ? 
+    WHERE moduleid = ?;
+  `;
+
+  db.query(query, [moduleImagePath, moduleid], (error, results) => {
+    if (error) {
+      console.error("Error updating module image:", error);
+      return res.json({ message: "Server error" });
+    }
+
+    if (results.affectedRows === 0) {
+      return res.json({ message: "Module not found" });
+    }
+
+    res.json({
+      message: "Module image updated successfully",
+      moduleid,
+      module_image: moduleImagePath,
+    });
   });
 };
 
@@ -1073,7 +1122,7 @@ const fetchMatchSubquestionsAndOptions = (quiz_text_id, callback) => {
     }
 
     // Step 2: Collect subquestion IDs
-    const subquestionIds = subquestions.map(subq => subq.subquestion_id);
+    const subquestionIds = subquestions.map((subq) => subq.subquestion_id);
 
     // Use a parameterized query with the list of subquestion IDs
     const fetchOptionsQuery = `
@@ -1090,12 +1139,14 @@ const fetchMatchSubquestionsAndOptions = (quiz_text_id, callback) => {
       }
 
       // Step 3: Format subquestions with their associated options
-      const formattedSubquestions = subquestions.map(subq => {
-        const matchedOptions = options.filter(opt => opt.subquestion_id === subq.subquestion_id);
+      const formattedSubquestions = subquestions.map((subq) => {
+        const matchedOptions = options.filter(
+          (opt) => opt.subquestion_id === subq.subquestion_id
+        );
         return {
           subquestion_id: subq.subquestion_id,
           subquestion_text: subq.subquestion_text,
-          options: options
+          options: options,
         };
       });
 
@@ -1129,3 +1180,33 @@ export const getOtherModules = (req, res) => {
     res.json(results);
   });
 };
+
+export const getCountsModuleAndEnrollment = (req, res) => {
+  const moduleCountQuery = "SELECT COUNT(*) AS moduleCount FROM modules";
+  const enrollmentCountQuery =
+    "SELECT COUNT(DISTINCT user_id) AS enrollmentCount FROM user_enrollment";
+
+  // Execute both queries
+  db.query(moduleCountQuery, (moduleErr, moduleResults) => {
+    if (moduleErr) {
+      return res.json({ error: "Error fetching module count" });
+    }
+
+    db.query(enrollmentCountQuery, (enrollmentErr, enrollmentResults) => {
+      if (enrollmentErr) {
+        return res.json({ error: "Error fetching enrollment count" });
+      }
+
+      // Extract counts from the results
+      const moduleCount = moduleResults[0].moduleCount;
+      const enrollmentCount = enrollmentResults[0].enrollmentCount;
+
+      // Send response with both counts
+      return res.json({
+        moduleCount,
+        enrollmentCount,
+      });
+    });
+  });
+};
+

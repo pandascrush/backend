@@ -541,7 +541,8 @@ export const getSpocNameByCompanyId = (req, res) => {
   const { company_id } = req.params; // Extract company_id from the request parameters
 
   // SQL query to get the spoc_name from the business_register table
-  const query = "SELECT spoc_name,company_email_id FROM business_register WHERE company_id = ?";
+  const query =
+    "SELECT spoc_name,company_email_id FROM business_register WHERE company_id = ?";
 
   // Execute the query
   db.query(query, [company_id], (err, result) => {
@@ -557,7 +558,10 @@ export const getSpocNameByCompanyId = (req, res) => {
     }
 
     // Return the spoc_name
-    res.json({ spoc_name: result[0].spoc_name,company_email:result[0].company_email_id });
+    res.json({
+      spoc_name: result[0].spoc_name,
+      company_email: result[0].company_email_id,
+    });
   });
 };
 
@@ -633,14 +637,15 @@ export const inactiveInvites = (req, res) => {
   var { email } = req.body;
 
   // Query to get company_email_id from business_register
-  const getCompanyEmailQuery = "SELECT company_email_id FROM business_register WHERE company_id = ?";
-  
+  const getCompanyEmailQuery =
+    "SELECT company_email_id FROM business_register WHERE company_id = ?";
+
   db.query(getCompanyEmailQuery, [company_id], (err, result) => {
     if (err) {
       console.log(err);
       return res.status(500).json({ error: "Failed to fetch company email." });
     }
-    
+
     // Ensure company_email_id is retrieved
     const company_email_id = result[0]?.company_email_id;
 
@@ -952,4 +957,156 @@ export const paymentWebhook = async (req, res) => {
 
   // Return a 200 response to acknowledge receipt of the event
   res.status(200).send("Webhook event received").end();
+};
+
+export const getCoursesAndUserDetail = (req, res) => {
+  const { id } = req.params;
+
+  // First query to get the user IDs based on the company_id
+  const userIdQuery = `
+    SELECT DISTINCT ue.user_id
+    FROM user_enrollment AS ue
+    WHERE ue.company_id = ?
+  `;
+
+  db.query(userIdQuery, [id], (error, userResults) => {
+    if (error) {
+      console.error(error);
+      return res
+        .status(500)
+        .json({ message: "Server error while fetching user IDs" });
+    }
+
+    // Extract user IDs from the results
+    const userIds = userResults.map((user) => user.user_id);
+
+    if (userIds.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No users found for this company" });
+    }
+
+    const query = `
+      SELECT 
+        c.courseid,
+        c.course_desc,
+        c.coursename, 
+        c.course_image, 
+        c.course_start_date, 
+        c.course_end_date, 
+        c.created_at,
+        COUNT(DISTINCT m.moduleid) AS module_count,
+        COUNT(DISTINCT ue.user_id) AS enrolled_user_count,
+        (SELECT COUNT(DISTINCT ue2.user_id)
+         FROM user_enrollment AS ue2
+         JOIN quiz_attempt AS qa ON ue2.user_id = qa.user_id 
+         WHERE qa.assessment_type = 2 
+         AND ue2.user_id IN (?)
+         GROUP BY ue2.user_id
+         HAVING COUNT(DISTINCT qa.moduleid) = 18) AS completed_user_count
+      FROM 
+        courses AS c
+      LEFT JOIN 
+        modules AS m ON c.courseid = m.courseid
+      LEFT JOIN 
+        user_enrollment AS ue ON ue.user_id IN (?) -- Filter by user IDs
+      GROUP BY 
+        c.courseid;
+    `;
+
+    // Use a single query to get course data with the filtered user IDs
+    db.query(query, [userIds, userIds], (error, results) => {
+      if (error) {
+        console.error(error);
+        return res.status(500).json({ message: "Server error" });
+      }
+
+      if (results.length === 0) {
+        return res.status(404).json({ message: "No courses found" });
+      }
+
+      const courses = results.map((course) => ({
+        courseid: course.courseid,
+        coursedesc: course.course_desc,
+        coursename: course.coursename,
+        course_image: `${process.env.URL}${course.course_image}`,
+        course_start_date: course.course_start_date,
+        course_end_date: course.course_end_date,
+        created_at: course.created_at,
+        module_count: course.module_count,
+        enrolled_user_count: course.enrolled_user_count,
+        completed_user_count: course.completed_user_count, // Users who completed all 18 modules
+      }));
+
+      res.json(courses);
+    });
+  });
+};
+
+export const getActiveCount = (req, res) => {
+  const { id } = req.params;
+
+  // First, fetch the user_ids associated with the given company_id
+  const userIdQuery = `
+    SELECT user_id 
+    FROM user_enrollment 
+    WHERE company_id = ?;
+  `;
+
+  db.query(userIdQuery, [id], (error, userResults) => {
+    if (error) {
+      console.error("Error fetching user IDs:", error);
+      return res.json({
+        success: false,
+        message: "Error fetching user IDs",
+        error: error.message,
+      });
+    }
+
+    // Extract user_ids from the results
+    const userIds = userResults.map((user) => user.user_id);
+
+    // If there are no users for the given company_id
+    if (userIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No users found for this company",
+        users: [],
+        activeUserCount: 0,
+      });
+    }
+
+    // Now, query the user_track table to get the active users
+    const activeUserQuery = `
+      SELECT u.*, ut.isActive
+      FROM user u
+      LEFT JOIN user_track ut ON u.user_id = ut.user_id
+      WHERE u.user_id IN (?)
+      AND u.user_id NOT IN (1, 2);
+    `;
+
+    db.query(activeUserQuery, [userIds], (err, results) => {
+      if (err) {
+        console.error("Error fetching users:", err);
+        return res.json({
+          success: false,
+          message: "Error fetching users",
+          error: err.message,
+        });
+      }
+
+      // Count the number of active users (isActive = 1)
+      const activeUserCount = results.filter(
+        (user) => user.isActive === 1
+      ).length;
+
+      // Send the results and active user count as a response
+      res.status(200).json({
+        success: true,
+        message: "All users fetched successfully",
+        users: results,
+        activeUserCount, // Include the overall active user count in the response
+      });
+    });
+  });
 };

@@ -5,6 +5,8 @@ import {
   countInvitedLearners,
   countTotalUsers,
   enrolledUserCount,
+  getActiveCount,
+  getCoursesAndUserDetail,
   getLicenseCountByCompanyId,
   getPaidUsersCount,
   getSpocNameByCompanyId,
@@ -39,7 +41,13 @@ router.post("/inactiveInvites/:company_id", inactiveInvites);
 router.get("/userstates/:company_id", getUserStats);
 
 router.post("/create-checkout-session/:company_id", paymentCheckOut);
-router.post("/webhook", express.raw({ type: "application/json" }), paymentWebhook);
+router.post(
+  "/webhook",
+  express.raw({ type: "application/json" }),
+  paymentWebhook
+);
 
+router.get("/getcourse/:id", getCoursesAndUserDetail);
+router.get("/getactivecount/:id",getActiveCount);
 
 export default router;

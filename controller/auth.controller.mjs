@@ -869,3 +869,172 @@ export const checkToken = (req, res) => {
     res.json({ message: "Token is valid", userId: decoded.id });
   });
 };
+
+export const forgotPassword = (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.json({ message: "Email is required" });
+  }
+
+  // Query the database to find the user by email
+  const query = "SELECT user_id, first_name FROM user WHERE email = ?";
+  db.query(query, [email], (error, results) => {
+    if (error) {
+      console.error("Database error:", error);
+      return res.json({ message: "Internal server error" });
+    }
+
+    if (results.length === 0) {
+      return res.json({ message: "User not found" });
+    }
+
+    const user = results[0];
+
+    // Create a JWT token with the user's ID, valid for 1 hour
+    const token = jwt.sign({ userId: user.user_id }, jwtSecret, {
+      expiresIn: "1h",
+    });
+
+    // Construct the password reset link
+    const resetLink = `${process.env.DOMAIN}/reset_password/${token}`;
+
+    const mailOptions = {
+      from: "sivaranji5670@gmail.com",
+      to: email,
+      subject: "Password Reset Request - Dr. Ken Spine Coach",
+      html: `
+        <html>
+          <body style="font-family: Arial, sans-serif; background-color: #001040; color: #ffffff; margin: 0; padding: 0;">
+            <table width="100%" bgcolor="#001040" cellpadding="0" cellspacing="0" style="padding: 20px;">
+              <tr>
+                <td align="center">
+                  <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+                    <tr>
+                      <td style="background-color: #001040; padding: 20px; text-align: center;">
+                        <h1 style="color: #ffffff; margin: 0;">Dr. Ken Spine Coach</h1>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 20px; color: #333333;">
+                        <h2 style="font-size: 24px; color: #001040; margin-bottom: 10px;">Reset Your Password</h2>
+                        <p style="font-size: 16px; line-height: 1.5;">
+                          Hi ${user.first_name},
+                        </p>
+                        <p style="font-size: 16px; line-height: 1.5;">
+                          We received a request to reset your password for the <strong>Dr. Ken Spine Coach</strong> LMS platform. Click the button below to reset your password.
+                        </p>
+                        <div style="text-align: center; margin: 20px 0;">
+                          <a href="${resetLink}" style="background-color: #001040; color: #ffffff; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-size: 16px;">
+                            Reset Password
+                          </a>
+                        </div>
+                        <p style="font-size: 16px; line-height: 1.5;">
+                          If you didn’t request a password reset, please ignore this email. This link will expire in 1 hour.
+                        </p>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="background-color: #001040; padding: 10px; text-align: center; color: #ffffff;">
+                        <p style="font-size: 14px; margin: 0;">&copy; ${new Date().getFullYear()} Dr. Ken Spine Coach. All rights reserved.</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `,
+    };
+
+    // Send the email
+    transporter.sendMail(mailOptions, (mailError) => {
+      if (mailError) {
+        console.error("Email error:", mailError);
+        return res.json({ message: "Error sending reset email" });
+      }
+
+      res.json({
+        message:
+          "Password reset link sent successfully. Please check your email.",
+      });
+    });
+  });
+};
+
+export const resetPassword = (req, res) => {
+  const { token, newPassword } = req.body;
+
+  if (!token || !newPassword) {
+    return res.json({ message: "Token and new password are required" });
+  }
+
+  // Verify the token
+  jwt.verify(token, jwtSecret, (err, decoded) => {
+    if (err) {
+      return res.json({ message: "Invalid or expired token" });
+    }
+
+    const userId = decoded.userId;
+
+    // Generate hashed password
+    bcrypt.genSalt(10, (err, salt) => {
+      if (err) {
+        return res.json({ message: "Error generating salt" });
+      }
+
+      bcrypt.hash(newPassword, salt, (err, hashedPassword) => {
+        if (err) {
+          return res.json({ message: "Error hashing password" });
+        }
+
+        // Update password in both user and auth tables
+        const updateUserQuery =
+          "UPDATE user SET password = ? WHERE user_id = ?";
+        const updateAuthQuery =
+          "UPDATE auth SET password = ? WHERE user_id = ?";
+
+        // Execute both update queries
+        db.query(
+          updateUserQuery,
+          [hashedPassword, userId],
+          (userError, userResults) => {
+            if (userError) {
+              console.error(
+                "Error updating password in user table:",
+                userError
+              );
+              return res.json({ message: "Database error" });
+            }
+
+            db.query(
+              updateAuthQuery,
+              [hashedPassword, userId],
+              (authError, authResults) => {
+                if (authError) {
+                  console.error(
+                    "Error updating password in auth table:",
+                    authError
+                  );
+                  return res.json({ message: "Database error" });
+                }
+
+                if (
+                  userResults.affectedRows === 0 ||
+                  authResults.affectedRows === 0
+                ) {
+                  return res.json({ message: "User not found" });
+                }
+
+                res.json({
+                  message: "Password updated successfully in both tables",
+                });
+              }
+            );
+          }
+        );
+      });
+    });
+  });
+};

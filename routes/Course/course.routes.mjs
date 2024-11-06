@@ -5,6 +5,7 @@ import {
   addModule,
   getActivityData,
   getAllCourses,
+  getCountsModuleAndEnrollment,
   getCourse,
   getModule,
   getModuleByCourseId,
@@ -16,6 +17,7 @@ import {
   submitCourseContent,
   updateCourseById,
   updateModule,
+  updateModuleImage,
   updatePageContent,
 } from "../../controller/Course/course.controller.mjs";
 const router = express.Router();
@@ -31,6 +33,7 @@ router.get('/getcourse/:id',getSingleCourse)
 // Module Section
 router.get("/getmodule", getModule);
 router.put("/updatemodule", updateModule); // update the module name
+router.put("/:moduleid/image", upload.single('moduleImage'), updateModuleImage);
 router.get("/getmodulepagecontent/:moduleid", getModulePageContent);
 router.put("/updatepagecontent", updatePageContent);   // update page content
 router.get("/getmodule/:courseId", getModulesByCourseId); // using isnide the Lessons compoennt
@@ -41,5 +44,6 @@ router.get("/structured-data", getStructuredData);
 
 router.get("/activity/:course_id/:module_id", getActivityData);
 router.get("/:course/:module", getOtherModules);
+router.get("/moduleandenrollcount",getCountsModuleAndEnrollment)
 
 export default router;
