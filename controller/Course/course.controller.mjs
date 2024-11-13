@@ -134,7 +134,7 @@ export const getAllCourses = (req, res) => {
       created_at: course.created_at,
       module_count: course.module_count,
       enrolled_user_count: course.enrolled_user_count,
-      completed_user_count: course.completed_user_count // Users who completed all 18 modules
+      completed_user_count: course.completed_user_count, // Users who completed all 18 modules
     }));
 
     res.json(courses);
@@ -344,14 +344,43 @@ export const addModule = (req, res) => {
 
 export const updateModule = (req, res) => {
   const { moduleid, modulename } = req.body;
+  const moduleImage = req.file;
+  console.log(moduleid, modulename, moduleImage);
 
-  if (!moduleid || !modulename) {
-    return res.json({ error: "Module ID and name are required" });
+  const moduleImagePath = moduleImage
+    ? path.join("/uploads", moduleImage.filename)
+    : null;
+
+  if (!moduleid) {
+    return res.json({ error: "Module ID is required" });
   }
 
-  const sql = `UPDATE modules SET modulename = ? WHERE moduleid = ?`;
+  // Dynamic query construction
+  let sql = `UPDATE modules SET `;
+  const fields = [];
+  const values = [];
 
-  db.query(sql, [modulename, moduleid], (error, result) => {
+  // Conditionally add fields based on availability
+  if (modulename) {
+    fields.push("modulename = ?");
+    values.push(modulename);
+  }
+
+  if (moduleImagePath) {
+    fields.push("module_image = ?");
+    values.push(moduleImagePath);
+  }
+
+  if (fields.length === 0) {
+    return res.json({ error: "Nothing to update" });
+  }
+
+  // Finalize query
+  sql += fields.join(", ") + " WHERE moduleid = ?";
+  values.push(moduleid);
+
+  // Execute query
+  db.query(sql, values, (error, result) => {
     if (error) {
       console.error("Error updating module:", error);
       return res.json({ error: "Failed to update module" });
@@ -361,45 +390,7 @@ export const updateModule = (req, res) => {
       return res.json({ error: "Module not found" });
     }
 
-    res.status(200).json({ message: "Module updated successfully" });
-  });
-};
-
-export const updateModuleImage = (req, res) => {
-  const { moduleid } = req.params;
-
-  // Get the uploaded file
-  const moduleImage = req.file;
-
-  // Generate the file path for storing in the database
-  const moduleImagePath = moduleImage ? path.join('/uploads', moduleImage.filename) : null;
-
-  if (!moduleImagePath) {
-    return res.json({ message: "Module image file is required" });
-  }
-
-  // SQL query to update the module image
-  const query = `
-    UPDATE modules 
-    SET module_image = ? 
-    WHERE moduleid = ?;
-  `;
-
-  db.query(query, [moduleImagePath, moduleid], (error, results) => {
-    if (error) {
-      console.error("Error updating module image:", error);
-      return res.json({ message: "Server error" });
-    }
-
-    if (results.affectedRows === 0) {
-      return res.json({ message: "Module not found" });
-    }
-
-    res.json({
-      message: "Module image updated successfully",
-      moduleid,
-      module_image: moduleImagePath,
-    });
+    res.json({ message: "Module updated successfully" });
   });
 };
 
@@ -1209,4 +1200,3 @@ export const getCountsModuleAndEnrollment = (req, res) => {
     });
   });
 };
-

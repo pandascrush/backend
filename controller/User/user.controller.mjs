@@ -468,13 +468,68 @@ export const getModuleCompletion = (req, res) => {
   db.query(query, [userId], (err, results) => {
     if (err) {
       console.error(err);
-      return res.status(500).json({ error: 'Database query failed' });
+      return res.status(500).json({ error: "Database query failed" });
     }
 
     if (results.length === 0) {
-      return res.status(404).json({ message: 'No modules found for this user' });
+      return res
+        .status(404)
+        .json({ message: "No modules found for this user" });
     }
 
     res.status(200).json(results);
+  });
+};
+
+export const getModuleCompletionForCertificate = (req, res) => {
+  const userId = req.params.user_id;
+
+  const query = `
+    SELECT 
+        m.moduleid,
+        m.modulename,
+        MAX(CASE 
+            WHEN qa.assessment_type = 1 THEN 50
+            WHEN qa.assessment_type = 2 THEN 100
+            ELSE 0
+        END) AS completion_percentage
+    FROM 
+        quiz_attempt AS qa
+    JOIN 
+        modules AS m ON qa.moduleid = m.moduleid
+    WHERE 
+        qa.user_id = ?
+    GROUP BY 
+        m.moduleid, m.modulename
+    ORDER BY 
+        m.moduleid ASC;
+  `;
+
+  db.query(query, [userId], (error, results) => {
+    if (error) {
+      console.error("Error fetching module completion status:", error);
+      return res.json({ error: "Internal server error" });
+    }
+
+    // Count how many modules are completed (100% completion)
+    const completedModules = results.filter(
+      (module) => module.completion_percentage === 100
+    ).length;
+
+    const totalModules = 18; // total required modules for certification
+
+    if (completedModules >= totalModules) {
+      res.json({
+        message: "All modules completed. Certificate available for download.",
+      });
+    } else {
+      res.json({
+        short : "you need to complete",
+        message: `You need to complete ${
+          totalModules - completedModules
+        } more module(s) to download the certificate.`,
+        remainingModules: totalModules - completedModules,
+      });
+    }
   });
 };
