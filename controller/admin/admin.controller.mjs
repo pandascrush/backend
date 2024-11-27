@@ -127,152 +127,97 @@ export const countTotalUsers = (req, res) => {
 
 // -----------------------------------------
 
-export const inviteLearners = (req, res) => {
+export const inviteLearners = async (req, res) => {
   const { company_id } = req.params;
-  const { emails } = req.body; // expecting a comma-separated string of emails
+  const { emails } = req.body;
 
   if (!emails || typeof emails !== "string") {
     return res.json({ message: "Invalid email list provided." });
   }
 
-  // Split the emails string by commas and trim whitespace
   const emailArray = emails.split(",").map((email) => email.trim());
 
-  // Step 1: Check for existing emails
-  const checkEmailQuery =
-    "SELECT email FROM invite_learners WHERE company_id = ? AND email IN (?)";
+  let connection;
+  try {
+    // Get a connection from the pool
+    connection = await db.promise().getConnection();
 
-  db.query(
-    checkEmailQuery,
-    [company_id, emailArray],
-    (checkErr, existingEmailsResult) => {
-      if (checkErr) {
-        return res.json({
-          message: "Database error while checking emails",
-          error: checkErr,
-        });
-      }
+    // Step 1: Check for existing emails
+    const checkEmailQuery =
+      "SELECT email FROM invite_learners WHERE company_id = ? AND email IN (?)";
+    const [existingEmailsResult] = await connection.query(checkEmailQuery, [
+      company_id,
+      emailArray,
+    ]);
 
-      // Get the list of already existing emails
-      const existingEmails = existingEmailsResult.map((row) => row.email);
+    const existingEmails = existingEmailsResult.map((row) => row.email);
+    const emailsToInvite = emailArray.filter(
+      (email) => !existingEmails.includes(email)
+    );
 
-      // Filter out the existing emails from the emailArray
-      const emailsToInvite = emailArray.filter(
-        (email) => !existingEmails.includes(email)
-      );
-      const emailCount = emailsToInvite.length; // Number of emails to invite
-
-      // If all emails are already invited, send a response
-      if (emailCount === 0) {
-        return res.json({
-          message: "All emails are already invited",
-          existingEmails,
-        });
-      }
-
-      // Start transaction
-      db.beginTransaction((transactionError) => {
-        if (transactionError) {
-          return res.json({
-            message: "Transaction error",
-            error: transactionError,
-          });
-        }
-
-        // Step 2: Fetch the current license and invite counts
-        const getLicenseQuery =
-          "SELECT license, invite FROM license WHERE company_id = ?";
-        db.query(getLicenseQuery, [company_id], (err, licenseResults) => {
-          if (err) {
-            return db.rollback(() => {
-              res.json({
-                message: "Error fetching license details",
-                error: err,
-              });
-            });
-          }
-
-          if (licenseResults.length === 0) {
-            return db.rollback(() => {
-              res.json({
-                message: "No license record found for this company.",
-              });
-            });
-          }
-
-          const { license, invite } = licenseResults[0];
-
-          // Check if there are enough licenses available
-          if (license < emailCount) {
-            return db.rollback(() => {
-              res.json({ message: "Not enough licenses available." });
-            });
-          }
-
-          // Step 3: Update license and invite counts
-          const updatedLicense = license - emailCount;
-          const updatedInvite = invite + emailCount;
-          const updateLicenseQuery =
-            "UPDATE license SET license = ?, invite = ? WHERE company_id = ?";
-
-          db.query(
-            updateLicenseQuery,
-            [updatedLicense, updatedInvite, company_id],
-            (updateErr) => {
-              if (updateErr) {
-                return db.rollback(() => {
-                  res.json({
-                    message: "Error updating license count",
-                    error: updateErr,
-                  });
-                });
-              }
-
-              // Step 4: Insert new learners into invite_learners table
-              const insertQuery =
-                "INSERT INTO invite_learners (company_id, email) VALUES ?";
-              const values = emailsToInvite.map((email) => [company_id, email]);
-
-              db.query(insertQuery, [values], (insertErr, result) => {
-                if (insertErr) {
-                  return db.rollback(() => {
-                    res.json({
-                      message: "Error inviting learners",
-                      error: insertErr,
-                    });
-                  });
-                }
-
-                // Step 5: Send emails to newly invited learners
-                emailsToInvite.forEach((email) => {
-                  sendEmail(email, company_id); // Send email to each learner
-                });
-
-                // Commit the transaction if everything is successful
-                db.commit((commitErr) => {
-                  if (commitErr) {
-                    return db.rollback(() => {
-                      res.json({
-                        message: "Transaction commit error",
-                        error: commitErr,
-                      });
-                    });
-                  }
-
-                  res.json({
-                    message:
-                      "Learners invited, licenses updated, and emails sent successfully",
-                    invitedEmails: emailsToInvite,
-                    existingEmails,
-                  });
-                });
-              });
-            }
-          );
-        });
+    if (emailsToInvite.length === 0) {
+      return res.json({
+        message: "All emails are already invited",
+        existingEmails,
       });
     }
-  );
+
+    // Start transaction
+    await connection.beginTransaction();
+
+    // Step 2: Fetch license and invite counts
+    const getLicenseQuery =
+      "SELECT license, invite FROM license WHERE company_id = ?";
+    const [licenseResults] = await connection.query(getLicenseQuery, [
+      company_id,
+    ]);
+
+    if (licenseResults.length === 0) {
+      throw new Error("No license record found for this company.");
+    }
+
+    const { license, invite } = licenseResults[0];
+    if (license < emailsToInvite.length) {
+      throw new Error("Not enough licenses available.");
+    }
+
+    // Step 3: Update license counts
+    const updatedLicense = license - emailsToInvite.length;
+    const updatedInvite = invite + emailsToInvite.length;
+    const updateLicenseQuery =
+      "UPDATE license SET license = ?, invite = ? WHERE company_id = ?";
+    await connection.query(updateLicenseQuery, [
+      updatedLicense,
+      updatedInvite,
+      company_id,
+    ]);
+
+    // Step 4: Insert new learners
+    const insertQuery =
+      "INSERT INTO invite_learners (company_id, email) VALUES ?";
+    const values = emailsToInvite.map((email) => [company_id, email]);
+    await connection.query(insertQuery, [values]);
+
+    // Step 5: Send emails (mocked for now)
+    emailsToInvite.forEach((email) => {
+      sendEmail(email, company_id); // Replace with your actual email function
+    });
+
+    // Commit transaction
+    await connection.commit();
+
+    res.json({
+      message:
+        "Learners invited, licenses updated, and emails sent successfully",
+      invitedEmails: emailsToInvite,
+      existingEmails,
+    });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    res.json({ message: "Error processing request", error: error.message });
+  } finally {
+    if (connection) connection.release();
+  }
 };
 
 // Email sending function

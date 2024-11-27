@@ -137,13 +137,15 @@ app.post(
         return res.status(500).send("Internal Server Error");
       }
     }
-
-    // Return a 200 response to acknowledge receipt of the event
     res.status(200).send("Webhook event received").end();
   }
 );
 
-// Start server
+
+
 app.listen(`${process.env.PORT}`, () => {
   console.log(`Server running on port ${port}`);
 });
+
+
+

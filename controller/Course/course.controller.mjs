@@ -206,6 +206,8 @@ export const updateCourseById = (req, res) => {
 
 // Module Section
 export const addModule = (req, res) => {
+  console.log("module");
+  
   const {
     moduleNames,
     path: modulePath,
